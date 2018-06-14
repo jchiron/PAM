@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+  <script type="text/javascript" src="/site_media/jquery/js/jquery-1.6.1.min.js"></script>
+
+  <style type='text/css'>
+        #formFormat {
+                line-height: 2em;
+                <!--background: #eef;-->
+                margin: 10px;
+                padding: 10px;
+                height: 150px;
+		text-align: center;
+        }
+
+        #status, #progress {
+                margin: 10px;
+                <!--background: #eef;-->
+                padding: 10px;
+                height: 100px;
+		overflow: auto;
+        }
+
+        body {
+                font-family: "Lucida Grande", "Lucida Sans Unicode", Verdana, Arial, Helvetica, sans-serif;
+                font-size: 14px;
+        }
+
+  </style>
+
+  <script type='text/javascript'>
+    //grab the global parameter value for input_text via the RESTful API
+    pluginGET = "";
+    $(document).ready(function(){
+     $.ajax({
+      url:"/rundb/api/v1/plugin/" + TB_plugin.pk + "?format=json",
+      dataType:"json",
+      type: "GET",
+      async: false,
+      success:function(data){
+       //get the plugin data
+       pluginGET = data;
+       
+       //delete the resource_uri
+       delete pluginGET.resource_uri;
+    }
+    });
+    });
+    $(function() {
+        $.fn.serializeObject = function()
+        {
+            var o = {};
+            var a = this.serializeArray();
+            $.each(a,
+            function() {
+                if (o[this.name] != null) {
+                    if (!o[this.name].push) {
+                        o[this.name] = [o[this.name]];
+                    }
+                    o[this.name].push(this.value || '');
+                } else {
+                    o[this.name] = this.value || '';
+                }
+            });
+            return o;
+        };
+        $('#postbutton').click(function() {
+            obj =  $('#Format').serializeObject();
+            pluginAPIJSON = { "plugin" : [TB_plugin.fields.name], "pluginconfig" : obj };
+            pluginAPIJSON = JSON.stringify(pluginAPIJSON);
+            pluginURL = "/rundb/api/v1/results/" + TB_result + "/plugin/";
+            msg_to_user = '<div style="text-align: center;">';
+            msg_to_user += '<p>Running the Plugin...this may take a while, hit "Refresh Plugin Status" to check for completion. </p>'
+            msg_to_user += '<img src="/site_media/jquery/colorbox/images/loading.gif"';
+            msg_to_user += 'alt="Running Plugin" style="float:center"></img>'
+            msg_to_user += '</div>'
+            $.ajax({
+                type: 'POST',
+                url: pluginURL,
+                contentType: "application/json; charset=utf-8",
+                success: function(data) {
+                    $("#status").html(msg_to_user);
+                    setTimeout("parent.$.fn.colorbox.close()" ,20); },
+                data: pluginAPIJSON,
+                dataType: "json"
+            });
+        });
+    });
+  </script>
+
+</head>
+        <body>
+        <div id="formFormat">
+            <form id="Format" align="center">
+                Varian annotation - select application type :
+                <!--<input type="text" id="test" name="test" value="" />    
+		<select name="format" id="format">
+		  <option value="diag">Diag</option><option value="safir02">Safir02</option>
+		</select>-->
+		<br/>
+		<input align="left" type="checkbox" name="Diag" id="Diag" value="True">Diag</input>
+		<br/>
+		<input align="left" type="checkbox" name="Safir02" id="Safir02" value="True">Safir02</input>
+		<br/><br/>
+            </form>
+            <input id="postbutton" type="submit" value="Submit">    
+        </div>
+        <div id="status"> </div>
+    </body>
+
+</html>

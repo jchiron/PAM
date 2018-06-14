@@ -1,0 +1,672 @@
+#!/usr/bin/env python
+# part of this code is from FileExporter plugin
+import json
+import os
+import sys
+import glob
+from ion.plugin import *
+from subprocess import *
+from django.utils.datastructures import SortedDict
+import urllib2
+import httplib2
+import requests
+import re
+import xlwt
+import xlrd
+
+class BackupIR(IonPlugin):
+	""" Plugin object which copy all desired IonReporter results file from the run into a folder."""
+	""" A hierarchical filesystem is created (project->run->patients) to store the data, and files name are uniformly renamed"""
+	version = "0.1"
+	
+	envDict = dict(os.environ)
+	json_dat = {}
+	renameString = ""
+	barcodeNames = []
+	sampleNameLookup = {} # dictionary allowing us to get the sample name associated with a particular barcode name
+	isBarcodedRun = False
+	runName = 'unknown'
+	project = 'unknown'
+	runPath = ''
+        folder = '/media/PGM/results/IonReporter'
+	IR_samples=[]
+	doneSamples=[]
+	
+	# paths to the most recent, completed instance of the IonReporter uploader plugin
+	#IRuploaderPath = False
+        	
+	def getBarcodeNameFromFileName(self, fileName):
+		for testBarcode in self.barcodeNames:
+			testBarcode2 = testBarcode + '_'
+			if testBarcode2 in fileName:
+				barcodeName = testBarcode
+				return barcodeName
+		
+	def createOneFolderByPatient(self, bamFileList):
+		for fileName in bamFileList:
+			fileName = fileName.replace('./', '')
+			barcodeName = self.getBarcodeNameFromFileName(fileName)
+			try:
+				patientName = self.sampleNameLookup[barcodeName]
+				
+				if not re.search("_RNA_",patientName,re.I): # 1 result per patient (DNA +RNA) under same folder named as DNA sample
+					for s_ir in self.IR_samples:
+						if patientName in s_ir:
+							sampleName = s_ir
+							print 'CREATING FOLDER : %s -'%(s_ir)
+					# cmd = 'mkdir '+ self.folder + '/' + self.runPath + '/' + patientName
+					# os.system(cmd)
+					# print 'cmd %s' % cmd
+
+							cmd = Popen(['mkdir', self.folder+'/'+self.runPath+'/'+s_ir], stdout=PIPE)
+					# cmd = Popen(['%s/backup_pgm.sh' % (self.envDict['DIRNAME']), 'mkdir', self.runPath + '/' + patientName], stdout=PIPE)
+							out, err = cmd.communicate()
+					#print 'OUT: %s\nERR: %s'%(out, err)
+
+					# get unfiltered zip, current tsv files paths and dowload them
+							#self.getSampleIRdata(patientName)
+							self.getSampleIRdata(s_ir)
+			except:
+				'No name found for barcode'+ str(barcodeName)
+                        
+			
+        def getSampleIRdata(self, sampleName):
+            #get json file for sample
+            jsonFile = '%s/%s/%s/%s.json' % (self.folder,self.runPath, sampleName, sampleName)
+            #print 'Destination json file : %s' % jsonFile
+
+	    #troubleshoot
+            #cmd = 'curl -k -H "Authorization:YzdkYzM5MmFlZTg4NDJhMzBkODQ3ZWIwMzgyZmJkMmI0NzVhZDNmZjQzMTkzYjY1NDYyMDg5MzAwMGRiNGRkZg" "https://129.21.10.4/webservices_42/rest/api/analysis?format=json&name=%s &type=sample" > %s '%(sampleName,jsonFile)
+	    #print 'cmd %s' % cmd
+
+            print 'Get IR json for sample %s ' % sampleName 
+	    #print self.IR_samples
+	    #for s_ir in self.IR_samples:
+		#    print s_ir
+		 #   if sampleName in s_ir:
+		#	    print 'sample %s = ir_id %s'% (sample_name,s_ir)
+		#	    sampleName = s_ir
+		    #else :
+			#  print 'sample %s not in ir_id %s'% (sample_name,s_ir)  
+            output = open(jsonFile,"w")
+	    #!!!!!!!!!! TODO : changer car pas toujours v1, ex ROUBY_KZ492_v4 !!!!!!!!!
+            url = "https://129.21.10.4/webservices_42/rest/api/analysis?format=json&name="+sampleName+"&type=sample"
+	    print 'URL %s'%url
+            cmd = Popen(['curl', '-k', '-H', "Authorization:NThiZGY1MzE0MTA5NWM4MTMzOGIyOWNkOGQzYjg1MjY0MjBmOTg1NjE5ODNmNjM5YjQzOTQxMjM5NzI3MzQ3Mg", url],stdout=output)
+            out, err = cmd.communicate()
+            print 'OUT: %s\nERR: %s'%(out, err)
+            output.close()
+
+            #get unfiltered variants  zip file for sample
+            with open(jsonFile, 'r') as f:
+		    #json_list = json.load(f)
+		    json_IR = json.load(f,parse_float=str)
+	    f.close()
+	    #print type(json_IR)
+	    	    
+	    status = False
+	    analysis_name = False
+	    #for data in json_IR:
+		    #if isinstance(data['status'],dict):
+		#	    status = data['status']
+		 #   else:
+	    #status = str(json_IR.get('status'))
+	
+	    status = json_IR[0]['status']
+	    #print 'status :' + status
+	    if status == 'SUCCESSFUL':
+		    print 'Get IR unfiltered.zip for sample %s ' % sampleName
+		    # get zip url
+		    zip_url = json_IR[0]['data_links']['unfiltered_variants']
+		    zip_url.replace('\\','')
+		    #print 'unfiltered_variants url :'+zip_url
+
+		    # upload IR unfiltered.zip for sample to torrent server
+		    uploaded_path = '%s/%s/%s/%s_filtered.zip' % (self.folder,self.runPath, sampleName, sampleName)
+		    #to troubleshoot
+		    #cmd = 'curl -k -H "Authorization:YzdkYzM5MmFlZTg4NDJhMzBkODQ3ZWIwMzgyZmJkMmI0NzVhZDNmZjQzMTkzYjY1NDYyMDg5MzAwMGRiNGRkZg" "%s" -o %s '%(zip_url,uploaded_path)
+		    #print 'cmd %s' % cmd
+
+		    cmd = Popen(['curl', '-k', '-H', "Authorization:NThiZGY1MzE0MTA5NWM4MTMzOGIyOWNkOGQzYjg1MjY0MjBmOTg1NjE5ODNmNjM5YjQzOTQxMjM5NzI3MzQ3Mg", zip_url, '-o', uploaded_path])
+		    out, err = cmd.communicate()
+		    #print 'OUT: %s\nERR: %s'%(out, err)
+		    
+		    #extract zip filtered variants to get IR vcf file
+		    tmp_dir = '%s/%s/%s/temp' % (self.folder,self.runPath,sampleName)
+		    os.mkdir(tmp_dir)
+		    cmd = 'unzip -d %s %s' % (tmp_dir,uploaded_path)
+		    os.system(cmd)
+
+		    for f in os.listdir(tmp_dir) :
+			    print 'FILE %s\n' % f
+			    if f.endswith('.zip'):
+				    print 'ZIP FILE %s\n' % f
+				    cmd = 'unzip -d %s/%s/%s %s/%s' % (self.folder,self.runPath,sampleName,tmp_dir,f)
+				    print 'UNZIP CMD %s\n' % cmd
+				    os.system(cmd)
+
+		    cmd = 'rm -r %s' % tmp_dir
+		    os.system(cmd)
+
+		    variantsDir = '%s/%s/%s/Variants/' % (self.folder,self.runPath,sampleName)
+		    for dirPath,dirNames,f in os.walk(variantsDir) :
+			    print 'FILENAME %s\n' % f
+			    for filename in f :
+				    if filename.endswith('.vcf'):
+					    print 'VCF FILE %s\n' % filename
+					    vcfFile = os.path.join(dirPath,filename)
+					    print 'VCF PATH %s\n' % vcfFile
+
+		    #TODO change to backupCopy floder path
+		    print 'Get OKR report.pdf for sample %s ' % sampleName
+		    report_path = '%s/%s/%s/%s_report.pdf' % (self.folder,self.runPath, sampleName, sampleName)
+		    print 'OKR report ouput path : %s\n' % report_path
+		    #cmd = Popen(['curl', '--user', "democonfig:123456", "--request", "POST", "--location", "http://129.21.10.4:8088/api/okr/report/file", "-F","file=",uploaded_apth, "-F","options=\"{\"filterPresetID\":102,\"reportTemplateID\":101,\"reportFormat\":\"PDF\"}\"", '-o', report_path])
+		    cmd = "curl --user democonfig:123456 --request POST --location \"http://129.21.10.4:8088/api/okr/report/file\" -F file=@%s -F options=\"{\\\"filterPresetID\\\":102,\\\"reportTemplateID\\\":101,\\\"reportFormat\\\":\\\"PDF\\\",\\\"fields\\\":[{\\\"name\\\":\\\"SampleID\\\",\\\"value\\\":\\\"%s\\\"}]}\" -o %s"% (vcfFile,sampleName,report_path)
+		    print 'OKR CMD: %s\n'%cmd
+		    #out,err = cmd.communicate()
+		    os.system(cmd)
+		    #print 'OKR OUT: %s\nOKR ERR: %s'%(out, err)
+
+
+		    # get IR current tsv file for sample
+		    print 'Get current result tsv file for sample %s ' % sampleName
+		    zip_path = zip_url.split('=')[-1]
+		    dirname = os.path.dirname(zip_path)
+		    #print dirname
+		    downloads_path = dirname +'/analysis_downloads/currentTsv/'
+		    downloads_path = downloads_path.replace('@','\@')
+		    #print downloads_path
+
+		    output_path = '%s/%s/%s/' % (self.folder,self.runPath, sampleName)
+		    #print 'OUTPUT_PATH: %s -' % output_path
+		    
+		    output_tsv = output_path+'currentTsv'
+		    cmd = 'mkdir '+output_tsv
+		    os.system(cmd)
+
+		    print '   RSYNC'
+		    cmd = 'echo ionadmin | sudo -u ionadmin -S rsync -r -t ionadmin@129.21.10.4:'+downloads_path+' '+output_tsv+'/.'
+		    #print 'CMD RSYNC %s' % cmd
+		    os.system(cmd)
+
+		    #get the latest tsv file in case there were many downloads
+		    print "   LS CMD"
+		    ls = Popen(['ls', '-t', '-1', output_tsv], stdout=PIPE)
+		    out, err = ls.communicate()
+		    #print 'LS OUT: %s\nLS ERR: %s'%(out, err)
+		    print "   NEWEST FILE CMD"
+		    head = Popen(['head', '-1'],stdin=PIPE,stdout=PIPE)
+		    out, err = head.communicate(input=out)
+		    #print 'HEAD OUT: %s\nHEAD ERR: %s'%(out, err)
+
+		    #read and sort tsv file
+		    print "   SORT TSV"
+		    tsv_current = '%s/%s' % (output_tsv,out.rstrip())
+		    tsv_sorted = '%s%s.tsv' % (output_path, sampleName)
+
+		    tsv_head = '%s%s.head.tsv' % (output_path, sampleName)
+		    tmp_ARN = '%s%s.ARN.tsv' % (output_path, sampleName)
+		    tmp_SNV = '%s%s.SNV.tsv' % (output_path, sampleName)
+		    tmp_CNV = '%s%s.CNV.tsv' % (output_path, sampleName)
+
+		    #header
+		    cmd = 'grep \#\# ' + tsv_current + '>' + tsv_head
+		    #print cmd
+		    os.system(cmd)
+		    cmd = 'grep Locus ' + tsv_current + '>>' + tsv_head
+		    #print cmd
+		    os.system(cmd)
+
+		    #RNA control
+		    cmd = 'grep EXPR_CONTROL ' + tsv_current + '>' + tmp_ARN
+		    #print cmd
+		    os.system(cmd)
+
+		    #RNA imbalance present
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if ($4==\"ASSAYS_5P_3P\" && $21==\"Present\") print $0 }' "+tsv_current + '>>' + tmp_ARN
+		    #print cmd
+		    os.system(cmd)
+
+		    #RNA FUSION present
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if ($4==\"FUSION\" && $21==\"Present\") print $0 }' "+tsv_current + '>>' +tmp_ARN
+		    #print cmd
+		    os.system(cmd)
+
+		    #RNA imbalance NoCall
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if ($4==\"ASSAYS_5P_3P\" && $21==\"NoCall\") print $0 }' "+tsv_current + '>>' +tmp_ARN
+		    #print cmd
+		    os.system(cmd)
+
+		    #RNA imbalance absent
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if (($4==\"ASSAYS_5P_3P\" && $21!=\"Present\")&&($21!=\"NoCall\")) print $0 }' "+tsv_current + '>>' +tmp_ARN
+		    #print cmd
+		    os.system(cmd)
+
+		    #RNA FUSION absent
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if ($4==\"FUSION\" && $21!=\"Present\") print $0 }' "+tsv_current + '>>' +tmp_ARN
+		    #print cmd
+		    os.system(cmd)
+
+		    #SNV present
+		    #category 1 : exonic frameshift, missense, nonsense
+		    cmd = "grep \"SNV\|MNV\|COMPLEX\" " + tsv_current + '| grep -v -E \"splicesite|synonymous|intronic|utr\"' + ">" + tmp_SNV
+		    #print cmd
+		    os.system(cmd)
+		    #category 2 : splicing
+		    cmd = "grep \"SNV\|MNV\|COMPLEX\" " + tsv_current + '| grep \"splicesite\"' + ">>" + tmp_SNV
+		    #print cmd
+		    os.system(cmd)
+		    #category 3 : exonic synonymous
+		    cmd = "grep \"SNV\|MNV\|COMPLEX\" " + tsv_current + '| grep \"synonymous\"' + ">>" + tmp_SNV
+		    #print cmd
+		    os.system(cmd)
+		    #category 4 : intronic
+		    cmd = "grep \"SNV\|MNV\|COMPLEX\" " + tsv_current + '| grep \"intronic\"' + ">>" + tmp_SNV
+		    #print cmd
+		    os.system(cmd)
+		    #category 5 : UTR
+		    cmd = "grep \"SNV\|MNV\|COMPLEX\" " + tsv_current + '| grep \"utr\"' + ">>" + tmp_SNV
+		    #print cmd
+		    os.system(cmd)
+
+		    #SNV NoCall
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if ($4==\"NOCALL\") print $0 }' "+tsv_current + '>>' +tmp_SNV
+		    #print cmd
+		    os.system(cmd)
+
+		    #CNV
+		    cmd = "awk 'BEGIN{FS=\"\t\"};{ if ($4==\"CNV\") print $0 }' "+tsv_current + "|sort -t \'\t\' -nr -k11,11 >" +tmp_CNV
+		    #print cmd
+		    os.system(cmd)
+		    
+		    #tsv_head.close()
+		    #tmp_ARN.close()
+		    #tmp_SNV.close()
+		    #tmp_CNV.close()
+		    #write XLS file
+		    # WORKBOOK STYLES
+		
+		    #headerStyle_string = "font:name Calibri, height 220, bold on;borders"
+		    #headerStyle = xlwt.easyxf('font: name Calibri, bold on, height 220; borders: left thin, top thin, bottom thin, right thin')
+		    generalStyle = xlwt.easyxf('font: name Calibri, height 220')
+		    greenBGStyle = xlwt.easyxf('font: name Calibri, height 220; pattern: pattern solid, fore-colour 0x2A')
+		    redBGStyle = xlwt.easyxf('font: name Calibri, height 220; pattern: pattern solid, fore-colour 0x1D')
+
+		    finalReport = xlwt.Workbook()
+		    arnSheet = finalReport.add_sheet("FUSION")
+		    cnvSheet = finalReport.add_sheet("CNV")
+		    snvSheet = finalReport.add_sheet("ADN variants")
+		    
+		    #define header dict fields needed are differents for all sheets
+		    header =''
+		    header_dict=[]
+		    #try:	
+		    #if os.path.isfile(tsv_head) and os.access(tsv_head, os.R_OK):
+		#	    print "ACCESS HEADER file OK"
+			    #if os.stat(tsv_head).st_size>0:
+		    head_file = open(tsv_head,'r')
+		    #head_reader = csv.reader(head_file,delimiter="\t")
+			    #header = head_reader.next()
+		    l = 0
+		    l_arn = 0
+		    l_cnv = 0
+		    l_snv = 0
+		    for header_line in head_file:
+			    #print header_line
+			    fields = header_line.split('\t')
+			    if fields[0]!="Locus":
+				    print 'diff Locus %s'%fields[0]
+				    arnSheet.write(l,0,fields[0])
+				    cnvSheet.write(l,0,fields[0])
+				    snvSheet.write(l,0,fields[0])
+				    l = l +1
+				    #header = header + header_line
+			    else:
+				    print 'Locus line'
+				    #arn header line
+				    arnSheet.write(l,0,fields[5],generalStyle)
+				    arnSheet.write(l,1,fields[0],generalStyle)
+				    arnSheet.write(l,2,fields[3],generalStyle)
+				    arnSheet.write(l,3,fields[13],generalStyle)
+				    arnSheet.write(l,4,fields[14],generalStyle)
+				    arnSheet.write(l,5,fields[22],generalStyle)
+				    arnSheet.write(l,6,fields[16],generalStyle)
+				    arnSheet.write(l,7,fields[20],generalStyle)
+				    arnSheet.write(l,8,fields[21],generalStyle)
+				    arnSheet.write(l,9,fields[23],generalStyle)
+				    arnSheet.write(l,10,fields[45],generalStyle)
+				    l_arn = l
+				    #cnv header line
+				    cnvSheet.write(l,0,fields[5],generalStyle)
+				    cnvSheet.write(l,1,fields[0],generalStyle)
+				    cnvSheet.write(l,2,fields[3],generalStyle)
+				    cnvSheet.write(l,3,fields[4],generalStyle)
+				    cnvSheet.write(l,4,fields[11],generalStyle)
+				    cnvSheet.write(l,5,fields[7],generalStyle)
+				    cnvSheet.write(l,6,fields[10],generalStyle)
+				    cnvSheet.write(l,7,fields[19],generalStyle)
+				    cnvSheet.write(l,8,fields[47],generalStyle)
+				    cnvSheet.write(l,9,fields[12],generalStyle)
+				    cnvSheet.write(l,10,fields[45],generalStyle)
+				    cnvSheet.write(l,11,fields[34],generalStyle)
+				    cnvSheet.write(l,12,fields[13],generalStyle)
+				    cnvSheet.write(l,13,fields[14],generalStyle)
+				    cnvSheet.write(l,14,fields[22],generalStyle)
+				    cnvSheet.write(l,15,fields[50],generalStyle)
+				    l_cnv = l
+				    #snv header line
+				    snvSheet.write(l,0,fields[5],generalStyle)
+				    snvSheet.write(l,1,fields[25],generalStyle)
+				    snvSheet.write(l,2,fields[0],generalStyle)
+				    snvSheet.write(l,3,fields[3],generalStyle)
+				    snvSheet.write(l,4,fields[4],generalStyle)
+				    snvSheet.write(l,5,fields[26],generalStyle)
+				    snvSheet.write(l,6,fields[15],generalStyle)
+				    snvSheet.write(l,7,fields[2],generalStyle)
+				    snvSheet.write(l,8,fields[1],generalStyle)
+				    snvSheet.write(l,9,fields[18],generalStyle)
+				    snvSheet.write(l,10,fields[17],generalStyle)
+				    snvSheet.write(l,11,fields[46],generalStyle)
+				    snvSheet.write(l,12,fields[48],generalStyle)
+				    snvSheet.write(l,13,fields[24],generalStyle)
+				    snvSheet.write(l,14,fields[12],generalStyle)
+				    snvSheet.write(l,15,fields[6],generalStyle)
+				    snvSheet.write(l,16,fields[27],generalStyle)
+				    snvSheet.write(l,17,fields[44],generalStyle)
+				    snvSheet.write(l,18,fields[45],generalStyle)
+				    snvSheet.write(l,19,fields[8],generalStyle)
+				    snvSheet.write(l,20,fields[9],generalStyle)
+				    snvSheet.write(l,21,fields[13],generalStyle)
+				    snvSheet.write(l,22,fields[14],generalStyle)
+				    snvSheet.write(l,23,fields[22],generalStyle)
+				    snvSheet.write(l,24,fields[33],generalStyle)
+				    snvSheet.write(l,25,fields[35],generalStyle)
+				    snvSheet.write(l,26,fields[36],generalStyle)
+				    snvSheet.write(l,27,fields[37],generalStyle)
+				    snvSheet.write(l,28,fields[38],generalStyle)
+				    snvSheet.write(l,29,fields[39],generalStyle)
+				    snvSheet.write(l,30,fields[30],generalStyle)
+				    snvSheet.write(l,31,fields[28],generalStyle)
+				    snvSheet.write(l,32,fields[32],generalStyle)
+				    snvSheet.write(l,33,fields[43],generalStyle)
+				    snvSheet.write(l,34,fields[29],generalStyle)
+				    snvSheet.write(l,35,fields[31],generalStyle)
+				    snvSheet.write(l,36,fields[40],generalStyle)
+				    snvSheet.write(l,37,fields[41],generalStyle)
+				    snvSheet.write(l,38,fields[42],generalStyle)
+				    snvSheet.write(l,39,fields[49],generalStyle)
+				    l_snv = l
+				    
+				    for i in range(len(fields)):
+					    print fields[i]
+					    #header_dict[i]=fields[i]
+					    #print header_dict[i]
+		    head_file.close()
+		    #except :
+			    #print "WARNING: no header file found"
+		    #ARN sheet
+		    try :
+			    arn_file = open(tmp_ARN,'r')
+			    print 'OK READ TMP_ARN FILE'
+			    l_arn = l_arn +1
+			    for arn_line in arn_file:
+				#print arn_line
+				fields = arn_line.split('\t')
+				arnSheet.write(l_arn,0,fields[5],generalStyle)
+				arnSheet.write(l_arn,1,fields[0],generalStyle)
+				arnSheet.write(l_arn,2,fields[3],generalStyle)
+				arnSheet.write(l_arn,3,fields[13],generalStyle)
+				arnSheet.write(l_arn,4,fields[14],generalStyle)
+				arnSheet.write(l_arn,5,fields[22],generalStyle)
+				arnSheet.write(l_arn,6,fields[16],generalStyle)
+				arnSheet.write(l_arn,7,fields[20],generalStyle)
+				arnSheet.write(l_arn,8,fields[21],generalStyle)
+				arnSheet.write(l_arn,9,fields[23],generalStyle)
+				arnSheet.write(l_arn,10,fields[45],generalStyle)
+				l_arn = l_arn + 1
+			    arn_file.close()	
+		    except :
+			    print "!!!!!!!WARNING: could not open tmp_ARN file"
+		    #CNV sheet
+		    try :
+			    cnv_file = open(tmp_CNV,'r')
+			    print 'OK READ TMP_ARN FILE'
+			    l_cnv = l_cnv +1
+			    for cnv_line in cnv_file:
+				#print cnv_line
+				fields = cnv_line.split('\t')
+				cnvSheet.write(l_cnv,0,fields[5],generalStyle)
+				cnvSheet.write(l_cnv,1,fields[0],generalStyle)
+				cnvSheet.write(l_cnv,2,fields[3],generalStyle)
+				cnvSheet.write(l_cnv,3,fields[4],generalStyle)
+				cnvSheet.write(l_cnv,4,fields[11],generalStyle)
+				cnvSheet.write(l_cnv,5,fields[7],generalStyle)
+				cnvSheet.write(l_cnv,6,fields[10],generalStyle)
+				cnvSheet.write(l_cnv,7,fields[19],generalStyle)
+				cnvSheet.write(l_cnv,8,fields[47],generalStyle)
+				cnvSheet.write(l_cnv,9,fields[12],generalStyle)
+				cnvSheet.write(l_cnv,10,fields[45],generalStyle)
+				cnvSheet.write(l_cnv,11,fields[34],generalStyle)
+				cnvSheet.write(l_cnv,12,fields[13],generalStyle)
+				cnvSheet.write(l_cnv,13,fields[14],generalStyle)
+				cnvSheet.write(l_cnv,14,fields[22],generalStyle)
+				cnvSheet.write(l_cnv,15,fields[50],generalStyle)
+				l_cnv = l_cnv + 1
+			    cnv_file.close()	
+		    except :
+			    print "!!!!!!!WARNING: could not open tmp_CNV file"
+		    #SNV sheet
+		    try :
+			    snv_file = open(tmp_SNV,'r')
+			    print 'OK READ TMP_SNV FILE'
+			    l_snv = l_snv +1
+			    for snv_line in snv_file:
+				#print snv_line
+				fields = snv_line.split('\t')
+				snvSheet.write(l_snv,0,fields[5],generalStyle)
+				snvSheet.write(l_snv,1,fields[25],generalStyle)
+				snvSheet.write(l_snv,2,fields[0],generalStyle)
+				snvSheet.write(l_snv,3,fields[3],generalStyle)
+				snvSheet.write(l_snv,4,fields[4],generalStyle)
+				snvSheet.write(l_snv,5,fields[26],generalStyle)
+				snvSheet.write(l_snv,6,fields[15],generalStyle)
+				snvSheet.write(l_snv,7,fields[2],generalStyle)
+				snvSheet.write(l_snv,8,fields[1],generalStyle)
+				snvSheet.write(l_snv,9,fields[18],generalStyle)
+				snvSheet.write(l_snv,10,fields[17],generalStyle)
+				snvSheet.write(l_snv,11,fields[46],generalStyle)
+				snvSheet.write(l_snv,12,fields[48],generalStyle)
+				snvSheet.write(l_snv,13,fields[24],generalStyle)
+				snvSheet.write(l_snv,14,fields[12],generalStyle)
+				snvSheet.write(l_snv,15,fields[6],generalStyle)
+				snvSheet.write(l_snv,16,fields[27],generalStyle)
+				snvSheet.write(l_snv,17,fields[44],generalStyle)
+				snvSheet.write(l_snv,18,fields[45],generalStyle)
+				snvSheet.write(l_snv,19,fields[8],generalStyle)
+				snvSheet.write(l_snv,20,fields[9],generalStyle)
+				snvSheet.write(l_snv,21,fields[13],generalStyle)
+				snvSheet.write(l_snv,22,fields[14],generalStyle)
+				snvSheet.write(l_snv,23,fields[22],generalStyle)
+				snvSheet.write(l_snv,24,fields[33],generalStyle)
+				snvSheet.write(l_snv,25,fields[35],generalStyle)
+				snvSheet.write(l_snv,26,fields[36],generalStyle)
+				snvSheet.write(l_snv,27,fields[37],generalStyle)
+				snvSheet.write(l_snv,28,fields[38],generalStyle)
+				snvSheet.write(l_snv,29,fields[39],generalStyle)
+				snvSheet.write(l_snv,30,fields[30],generalStyle)
+				snvSheet.write(l_snv,31,fields[28],generalStyle)
+				snvSheet.write(l_snv,32,fields[32],generalStyle)
+				snvSheet.write(l_snv,33,fields[43],generalStyle)
+				snvSheet.write(l_snv,34,fields[29],generalStyle)
+				snvSheet.write(l_snv,35,fields[31],generalStyle)
+				snvSheet.write(l_snv,36,fields[40],generalStyle)
+				snvSheet.write(l_snv,37,fields[41],generalStyle)
+				snvSheet.write(l_snv,38,fields[42],generalStyle)
+				snvSheet.write(l_snv,39,fields[49],generalStyle)
+				l_snv = l_snv + 1
+			    snv_file.close()	
+		    except :
+			    print "!!!!!!!WARNING: could not open tmp_SNV file"
+		    #save excel file
+		    print 'output excel %s%s.xls' % (output_path,sampleName)
+		    finalReport.save("%s%s.xls" % (output_path, sampleName))    
+	    else :
+		    print 'No IR uploader successfull instance found for sample '+sampleName
+
+	def getPluginPath(self, pluginName):
+		pluginPath = False
+		try:
+			api_url = self.json_dat['runinfo']['api_url'] + '/v1/pluginresult/?format=json&plugin__name=%s&result=%s' % (pluginName,str(self.json_dat['runinfo']['pk']))
+			api_key = self.json_dat['runinfo'].get('api_key', None)
+			if api_key is not None:
+				api_url = api_url + '&api_key=%s' % api_key
+				#print 'Using API key: %s' % api_key
+			else:
+				print 'No API key available'
+			f = urllib2.urlopen(api_url)
+			d = json.loads(f.read())
+			
+			for plugin in d['objects']: # they are already sorted from newest to oldest, so take the first of this list which is 'completed'
+				if plugin['state'] == 'Completed':
+					pluginPath = plugin['path']
+					pluginPath = pluginPath.split('/')[-1]
+					break
+			if not pluginPath:
+				print 'WARNING! No completed instance found for plugin "%s"' % pluginName
+		except:
+			print 'ERROR!  Failed to get variant caller path'
+		
+		print 'INFO: using %s path: %s' % (pluginName,pluginPath)
+		return pluginPath
+		
+       
+	def launch(self):
+		try:
+			with open('startplugin.json', 'r') as fh:
+				self.json_dat = json.load(fh)
+		except:
+			print 'Error reading plugin json.'
+		
+		try:
+			htmlOut = open('%s/plugin_out/BackupIR_out/BackupIR_block.html'%self.envDict['ANALYSIS_DIR'], 'a+')
+		except:
+			htmlOut = open('BackupIR_block.html', 'w')
+		htmlOut.write('<html><body>\n')
+
+		if os.path.isfile(self.envDict['TSP_FILEPATH_BARCODE_TXT']):
+			self.isBarcodedRun = True
+			
+		if not self.isBarcodedRun:
+			print "This plugin only work for barcoded run. \n Exiting..."
+			sys.exit(0)
+
+                # get the project name.
+		try:
+			self.project = self.envDict['TSP_PROJECT']
+		except:
+			self.project = 'unknown'
+			
+		# get the run name.
+		try:
+			self.runName = self.envDict['TSP_ANALYSIS_NAME']
+		except:
+			self.runName = 'unknown'
+		self.runPath = self.project + '/' + self.runName
+
+                # creating folder of the project
+		print 'CREATING FOLDER : %s -'%(self.project)
+		cmd = Popen(['mkdir', self.folder+'/'+self.project], stdout=PIPE)
+		out, err = cmd.communicate()
+		#print 'OUT: %s\nERR: %s'%(out, err)
+
+                # creating folder of the run
+		print 'CREATING FOLDER : %s -'%(self.runName)
+		cmd = Popen(['mkdir', self.folder+'/'+self.runPath], stdout=PIPE)
+		out, err = cmd.communicate()
+		#print 'OUT: %s\nERR: %s'%(out, err)
+
+                #get IonReporter uploader path
+                self.IRuploaderPath = self.getPluginPath("IonReporterUploader")
+                htmlOut.write('&#8594; IonReporterUploader instance : <b>%s</b><br/>\n'%self.IRuploaderPath)
+                if not self.IRuploaderPath:
+                    IRuploader = False
+
+		summary_path = '%s/plugin_out/%s/summary.html'%(self.envDict['ANALYSIS_DIR'],self.IRuploaderPath)
+		print "SUMMARY "+summary_path
+		summary = open(summary_path,'r')
+		#IR_samples=[]
+		for line in summary:
+			#print line
+			if 'Valid&nbsp;Samples' in line:
+				line = line.strip().split("<br>")[0]
+				sample_ir = line.split("&nbsp;")[-1]
+				#print "SAMPLE IR " + sample_ir
+				sample_ir = sample_ir.replace('RNA_','')
+				#print "SAMPLE IR replace " + sample_ir
+				if sample_ir not in self.IR_samples :
+					self.IR_samples.append(sample_ir)
+				#else:
+				#	print sample_ir + 'already in list'
+	
+
+                # Get bam filenames.
+		with open(os.path.join(self.json_dat['runinfo']['basecaller_dir'], 'datasets_basecaller.json'), 'r') as f:
+			json_basecaller = json.load(f)
+
+                if isinstance(self.json_dat['plan']['barcodedSamples'],dict):
+			samples = self.json_dat['plan']['barcodedSamples']
+		else:
+			samples = json.loads(self.json_dat['plan']['barcodedSamples'])
+
+		bamPaths = []
+		bams = []
+
+                try:
+			reference_path = self.envDict['TSP_FILEPATH_GENOME_FASTA']
+		except:
+			reference_path = ''
+
+		for datum in json_basecaller['datasets']:
+			if reference_path != '':
+				tempPath = os.path.join(self.json_dat['runinfo']['alignment_dir'], datum['file_prefix']+'.bam')
+			else:
+				tempPath = os.path.join(self.json_dat['runinfo']['basecaller_dir'], datum['file_prefix']+'.basecaller.bam')
+			#print 'adding BAM: %s' % tempPath
+			if os.path.exists(tempPath):
+				bamPaths.append(tempPath)
+				if datum['dataset_name'][datum['dataset_name'].rfind('/')+1:] != 'No_barcode_match' and '/' in datum['dataset_name']:
+					bams.append(datum['dataset_name'])
+
+		# get the list of 'valid' barcodes or samples (could be either depending on whether user altered names with run planning
+		# and sort of hacky, but extract this from the BAM file names we just got above
+		for bamFileName in bamPaths:
+			barcodeName = bamFileName.split('/')[-1] # get the last part, just the name with no path (probably can use os method here too)
+			barcodeName = barcodeName.split('_rawlib')[0] # get just the barcode part of the name
+			# find a possible matching sample name
+			for sampleItemName in samples:
+				sampleItem = samples[sampleItemName]
+				if barcodeName in sampleItem['barcodes']:
+					self.sampleNameLookup[barcodeName] = sampleItemName
+			if barcodeName in self.sampleNameLookup.keys():
+				sampleName = self.sampleNameLookup[barcodeName]
+				print 'BARCODE FOUND: %s SAMPLE ID: %s' % (barcodeName, sampleName)
+				if sampleName not in self.doneSamples :
+					self.barcodeNames.append(barcodeName)
+					self.doneSamples.append(sampleName)
+				else :
+					print 'PATIENT %s already analysed'%sampleName
+			else:
+				sampleName = ''
+				#self.sampleNameLookup[barcodeName] = '' # makes it much easier later to do the lookup with no conditional tests
+			# MGD note: I considered setting blank sample names to the barcode name instead, but might not be what customer intended
+		# Create patients folders
+		print 'CREATING PATIENTS FOLDERS...'
+		self.createOneFolderByPatient(bamPaths)	
+		self.sampleNameLookup[''] = '' # allows us to easily handle case where barcode might not have been found
+
+               
+
+if __name__ == "__main__":
+	PluginCLI(BackupIR())
+

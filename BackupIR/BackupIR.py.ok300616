@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+# part of this code is from FileExporter plugin
+import json
+import os
+import sys
+import glob
+from ion.plugin import *
+from subprocess import *
+from django.utils.datastructures import SortedDict
+import urllib2
+import httplib2
+import requests
+import re
+
+class BackupIR(IonPlugin):
+	version = "0.1"
+	json_dat = {}
+	def launch(self):
+		try:
+			with open('startplugin.json', 'r') as fh:
+				self.json_dat = json.load(fh)
+		except:
+			print 'Error reading plugin json.'
+
+		downloads_path = '/data/IR/data/IR_Org/ion.reporter@lifetech.com/ROUBY_KZ492_v4_ROUBY_KZ492_RNA_v4/ROUBY_KZ492_v4_20160531115104244/analysis_downloads/currentTsv/'
+
+		downloads_path = downloads_path.replace('@','\@')
+
+		#h = httplib2.Http(".cache")
+		#h.add_credentials('ionadmin', 'ionadmin')
+
+		#url = self.json_dat['runinfo']['api_url'] + '/v1/results?format=json&plugin__name=IonReporterUploader'
+
+		#resp, content = h.request(url, "GET")
+		#contentdict = json.loads(content)
+		
+		#objects = contentdict['objects']
+		#for obj in objects:
+		#	print obj['filesPrefix']
+
+		output_path ='/media/PGM/results/IonReporter/essais_precoces/Auto_user_PGM-419-Mon_Oncomine_Focus_DNA_and_Fusions_498/ROUBY_KZ492/'
+		
+		cmd = 'echo ionadmin | sudo -u ionadmin -S rsync -r -t ionadmin@129.21.10.4:'+downloads_path+' '+output_path+'/.'
+		print 'CMD RSYNC %s' % cmd
+		os.system(cmd)
+
+if __name__ == "__main__":
+	PluginCLI(BackupIR())
+

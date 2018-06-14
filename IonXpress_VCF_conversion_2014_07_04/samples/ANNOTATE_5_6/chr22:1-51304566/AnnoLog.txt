@@ -1,0 +1,6 @@
+NOTICE: Finished reading 115 lines from VCF file
+NOTICE: A total of 0 locus in VCF file passed QC threshold, representing 0 SNPs (0 transitions and 0 transversions) and 0 indels/substitutions
+NOTICE: Finished writting 0 SNPs (0 transitions and 0 transversions) and 0 indels/substitutions for 1 sample
+NOTICE: Finished reading 115 lines from VCF file
+NOTICE: A total of 0 locus in VCF file passed QC threshold, representing 0 SNPs (0 transitions and 0 transversions) and 0 indels/substitutions
+NOTICE: Finished writting 0 SNPs (0 transitions and 0 transversions) and 0 indels/substitutions for 1 sample

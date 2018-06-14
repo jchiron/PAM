@@ -1,0 +1,20 @@
+#!/usr/bin/env python
+import httplib2
+import urllib2
+import os
+import json
+from ion.plugin import *
+from subprocess import *
+import time
+
+class HelloWord(IonPlugin):
+	""" Plugin test."""
+	version = '0.1'
+	json_dat = {}
+			
+	def launch(self):
+                print "Hello Word !"
+                
+		
+if __name__ == '__main__':
+	PluginCLI(HelloWord())

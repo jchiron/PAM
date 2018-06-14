@@ -1,0 +1,490 @@
+#!/usr/bin/env python
+import httplib2
+import urllib2
+import requests
+import os
+import sys
+import json
+import time
+import datetime
+from subprocess import *
+
+##########################################################
+### SCRIPT to run all default plugins for routine analysis
+##########################################################
+
+def checkPluginCompletion(pluginName, hostname, pk):
+        api_url = os.getenv('RUNINFO__API_URL','http://localhost/rundb/api') + '/v1/pluginresult/?format=json&plugin__name=%s&result=%s' % (pluginName,str(pk))
+        #api_key='3f2cdec72f8b1783dfc1222cb4f4164c79de53a7'
+        #if api_key is not None:
+        #        api_url = api_url + '&api_key=%s' % api_key
+        #        print 'Using API key: %s' % api_key
+        #else:
+        #        print 'No API key available'
+        #print "API_URL1 :"+api_url
+
+        #api_url = hostname + '/v1/pluginresult/?format=json&plugin__name=%s&result=%s' % (pluginName,str(pk))
+        #api_url = os.getenv('RUNINFO__API_URL','http://localhost/rundb/api') + '/v1/pluginresult/?format=json&plugin__name=%s&result=%s' % (pluginName,str(pk))
+        #print "API_URL :"+api_url
+
+	f = urllib2.urlopen(api_url)
+	d = json.loads(f.read())
+        for plugin in d['objects']: # they are already sorted from newest to oldest, so take the first of this list which is 'completed'
+                if plugin['state'] == 'Completed':
+                        return True
+                else:
+                        return False
+	#state = d['objects'][0]['state']
+	#if state == 'Completed':
+	#	return True
+	#else:
+	#	return False
+
+start_time = datetime.datetime.now()
+print "Start time = " + str(start_time)
+### GATHERING PARAMETERS ###
+routine_dir = sys.argv[1]
+global_param = {}
+json_dat = {}
+barcode2target = {}
+sample2barcode = {}
+barcode2description = {}
+barcode2type = {}
+
+with open('/results/plugins/global_parameters.json', 'r') as g:
+	global_param = json.load(g)
+with open('%s/startplugin.json' % routine_dir, 'r') as j:
+	json_dat = json.load(j)
+
+targetColonLung = global_param['target']['ColonLung'] #CLv2 custom MET14
+print "TARGET ColonLung : "+ targetColonLung +"\n"
+targetOncomineFocus = global_param['target']['OncomineFocus'] #oncomine focus
+print "TARGET OncomineFocus : "+ targetOncomineFocus +"\n"
+targetBRCA = global_param['target']['BRCA_qiagen'] #qiagen NGHS-102X_BRCA1BRCA2
+print "TARGET BRCA: "+targetBRCA+"\n"
+targetColonLungADNct = global_param['target']['ColonLungADNct'] #CLv2
+print "TARGET ColonLungADNct: "+targetColonLungADNct+"\n"
+targetOncomineADNct = global_param['target']['OncomineFocus'] #oncomine focus
+print "TARGET OncomineADNct: "+targetOncomineADNct+"\n"
+targetSafir02 = global_param['target']['Safir02'] #Safir 2017
+print "TARGET Safir02: "+targetSafir02+"\n"
+targetOncomineLungUMI = global_param['target']['OncomineLungUMI']
+print "TARGET OncomineLungUMI: "+targetOncomineLungUMI+"\n"
+targetTP53 = global_param['target']['TP53']
+print "TARGET TP53: "+targetTP53+"\n"
+target2hotspot = {targetBRCA:global_param['hotspot']['BRCA_qiagen'],targetColonLung:global_param['hotspot']['ColonLung'],targetColonLungADNct:global_param['hotspot']['ColonLungADNct'],targetOncomineLungUMI:global_param['hotspot']['OncomineLungUMI']}
+target2param = {targetColonLung:global_param['vc_parameters']['ColonLung'],targetOncomineFocus:global_param['vc_parameters']['OncomineFocus'],targetBRCA:global_param['vc_parameters']['BRCA_qiagen'],targetColonLungADNct:global_param['vc_parameters']['ColonLungADNct'],targetSafir02:global_param['vc_parameters']['Safir02'],targetOncomineLungUMI:global_param['vc_parameters']['OncomineLungUMI'],targetTP53:global_param['vc_parameters']['TP53']}
+#projectOncomine = global_param['project_id']['Oncomine']
+#projectADNct = global_param['project_id']['ADNct']
+ref = global_param['ref']
+pk = json_dat['runinfo']['pk']
+hostname = json_dat['runinfo']['api_url']
+planTarget = ''
+
+h = httplib2.Http()
+h.add_credentials('ionadmin', 'ionadmin')
+url = global_param['server_net_location'] + '/rundb/api/v1/results/' + str(pk) + '/plugin/'
+
+api_url = hostname + '/v1/results/' + str(pk)
+f = urllib2.urlopen(api_url)
+d = json.loads(f.read())
+eas = d['eas']
+api_url = json_dat['runinfo']['net_location'] + eas
+f = urllib2.urlopen(api_url)
+d = json.loads(f.read())
+planTarget = d['targetRegionBedFile']
+
+for bs in d['barcodedSamples']:
+        print "SAMPLE: "+ bs+" "
+        for bc in d['barcodedSamples'][bs]['barcodeSampleInfo']:
+                sample2barcode[bs] = bc
+                print "BARCODE (KEY): "+bc+" "
+                barcode2target[bc] = d['barcodedSamples'][bs]['barcodeSampleInfo'][bc]['targetRegionBedFile']
+                print "TARGET (VALUE): "+barcode2target[bc]+"\n"
+                barcode2description[bc] = d['barcodedSamples'][bs]['barcodeSampleInfo'][bc]['description']
+                print "DESCRIPTION (VALUE): "+barcode2description[bc]+"\n"
+                barcode2type[bc] = d['barcodedSamples'][bs]['barcodeSampleInfo'][bc]['nucleotideType']
+                print "NUCLEOTIDE TYPE (VALUE): "+barcode2type[bc]+"\n"
+
+#for bc in barcode2description.keys():
+#        print "BARCODE (KEY): "+bc+"DESCRIPTION (VALUE): "+barcode2description[bc]+"\n"
+
+nb_project = 0
+api_url = hostname + '/v1/results/' + str(pk)
+f = urllib2.urlopen(api_url)
+d = json.loads(f.read())
+#for project in d['projects']:
+#        nb_project = int(project.split('/')[-2])
+        #print 'project nb %s' % nb_project
+
+#TO ADD !!!!
+#script collect run report metrics
+#if targetSBT in barcode2target.values(): # TODO verifier resultat si copucage
+#	cmd = Popen(['python','/results/scripts/collect_runs_metrics_SBT.py',json_dat['runinfo']['alignment_dir'],str(pk)], stdout=PIPE)
+#	out, err = cmd.communicate()
+#	print '\n--collect_run_metrics_SBT.py %s %s : \nOUT: %s\nERR: %s'%(json_dat['runinfo']['alignment_dir'], str(pk), out, err)
+#else:
+#	cmd = Popen(['python','/results/scripts/collect_runs_metrics.py',json_dat['runinfo']['alignment_dir'],str(pk)], stdout=PIPE)
+#	out, err = cmd.communicate()
+#	print '\n--collect_run_metrics.py %s %s : \nOUT: %s\nERR: %s'%(json_dat['runinfo']['alignment_dir'], str(pk), out, err)
+
+
+
+
+
+#url='http://129.21.10.5/rundb/api/v1/results/'+ str(pk) + '/plugin/'
+#rest_auth = ('ionadmin','ionadmin')
+#json_head = {'Content-Type': 'application/json'}
+
+headers = {'Content-type': 'application/json','Accept': 'application/json'}
+
+########################
+### coverageAnalysis ###
+########################
+
+pluginName = 'coverageAnalysis'
+pluginUpdate  = {'plugin': [pluginName]}
+print "-> Launching coverageAnalysis..."
+resp, content = h.request(url, 'POST', body=json.dumps(pluginUpdate),headers=headers)
+print resp
+print content
+
+
+
+#####################
+### VariantCaller ###
+#####################
+
+pluginName = 'variantCaller'
+
+#print 'project oncomine %s' % projectOncomine
+#if int(projectOncomine) == nb_project:
+#        print 'puce Oncomine'
+#        target_todo= list(set([targetOncomine]))
+#        print target_todo
+#        print 'len %s' % len(target_todo)
+#else :
+
+target_todo = list(set(barcode2target.values()))
+
+#=> commente le 020518 car les puces oncomine focus peuvent avoir des echantillons classiques ou ADNct qui necessitent un parametrage different meme si un seul target dans le plan
+#if not len(target_todo) > 1: # = not copucage
+#	parameter_file = target2param[planTarget]
+#	print "Using VC parameter file : " + parameter_file
+#	with open(parameter_file, 'r') as pf:#
+#		json_pf = json.load(pf)
+#	pluginUpdate  = {'plugin': [pluginName], 'pluginconfig' : json_pf}
+#	print "-> Launching variantCaller..."
+#	resp, content = h.request(url, 'POST', body=json.dumps(pluginUpdate),headers=headers)
+#	print resp
+#	print content
+#else: #copucage
+#<= fin commentaire
+
+print "Launching variantCaller in copucage mode"
+pluginconf = {"multisample": False, "barcodes": []}
+for barcode in barcode2target.keys():
+        print "BARCODE "+ barcode +" description "+  barcode2description[barcode] +"\n"
+        if barcode2description[barcode]=='ADNct' or barcode2description[barcode]=='ADNtc': # test for ADNct samples to set specific varaintCaller parameter
+                #print "BC: "+barcode+" ADNtc \n"
+                #print "target: "+barcode2target[barcode]+"\n"
+                if barcode2target[barcode] == targetOncomineFocus:
+                        #for DNA sample only
+                        if barcode2type[barcode]=='DNA':
+                                #print "vc_parameters: OncomineFocusADNct\n"
+                                with open(global_param['vc_parameters']['OncomineFocusADNct'], 'r') as pf:
+                                        json_pf = json.load(pf)
+                                        print "PARAM: " + global_param['vc_parameters']['OncomineFocusADNct']
+                                        #print str(json_pf) + "\n"
+                                bc2add = {"json": {"plugin": ["variantCaller"], "pluginconfig": json_pf},"bam": "%s_rawlib.bam" % barcode}
+                                pluginconf['barcodes'].append(bc2add)
+                if barcode2target[barcode] == targetColonLungADNct:
+                        #print "vc_parameters: ColonLungADNct\n"
+                        with open(global_param['vc_parameters']['ColonLungADNct'], 'r') as pf:
+                                json_pf = json.load(pf)
+                                #print str(json_pf) + "\n"
+                        bc2add = {"json": {"plugin": ["variantCaller"], "pluginconfig": json_pf},"bam": "%s_rawlib.bam" % barcode}
+                        pluginconf['barcodes'].append(bc2add)
+                if barcode2target[barcode] == targetSafir02:
+                        #print "vc_parameters: Safir02ADNct\n"
+                        with open(global_param['vc_parameters']['Safir02ADNct'], 'r') as pf:
+                                json_pf = json.load(pf)
+                                #print str(json_pf) + "\n"
+                        bc2add = {"json": {"plugin": ["variantCaller"], "pluginconfig": json_pf},"bam": "%s_rawlib.bam" % barcode}
+                        pluginconf['barcodes'].append(bc2add)
+        elif barcode2description[barcode]=='':
+                #for DNA sample only
+                if barcode2type[barcode]=='DNA':
+                        #print "BC: "+barcode+"\n"
+                        #print "target: "+barcode2target[barcode]+"\n"
+                        with open(target2param[barcode2target[barcode]], 'r') as pf:
+                                json_pf = json.load(pf)
+                                #print str(json_pf) + "\n"
+                        bc2add = {"json": {"plugin": ["variantCaller"], "pluginconfig": json_pf},"bam": "%s_rawlib.bam" % barcode}
+                        pluginconf['barcodes'].append(bc2add)
+                
+pluginUpdate  = {'plugin': [pluginName], 'pluginconfig' : pluginconf}
+print "-> Launching variantCaller..."
+resp, content = h.request(url, 'POST', body=json.dumps(pluginUpdate),headers=headers)
+print resp
+print content
+
+
+vcCompleted = False
+while not vcCompleted:
+        time.sleep(20)
+        vcCompleted = checkPluginCompletion("variantCaller", hostname, str(pk))
+
+
+#########################
+### VariantAnnotation ###
+#########################
+
+pluginName = "variantAnnotation"
+
+#pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"VA_Diag" : "True", "VA_Safir02" : "False"}}
+pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"VA_DIAG" : "True", "VA_SAFIR02" : "False"}}
+
+#test if safir chip to format annotation
+if targetSafir02 in barcode2target.values():
+        #pluginUpdate = {"plugin": [pluginName], "pluginconfig" : {"VA_Diag" : "False", "VA_Safir02" : "True"}}
+        pluginUpdate = {"plugin": [pluginName], "pluginconfig" : {"VA_DIAG" : "False", "VA_SAFIR02" : "True"}}
+
+print "-> Launching variantAnnotation..."
+resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+print resp
+print content
+
+
+####################
+### Homopolymers ###
+####################
+
+#pluginName = "Homopolymers"
+#if targetBRCA in barcode2target.values():
+#        pluginUpdate  = {"plugin": [pluginName]}
+#        print "-> Launching Homopolymers..."
+#        resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+#        print resp
+#        print content
+
+
+####################
+### plotCoverage ###
+####################
+
+pluginName = "plotCoverage"
+
+covCompleted = False
+while not covCompleted:
+	time.sleep(20)
+	covCompleted = checkPluginCompletion("coverageAnalysis", hostname, str(pk))
+		
+pluginUpdate  = {"plugin": [pluginName]}
+print "-> Launching plotCoverage..."
+resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+print resp
+print content
+
+###########################
+### Check_contamination ###
+###########################
+
+sample2check = []
+#control_names = ["H2O-H2O","H2O-","H2O","H20","h2o","h20","h2o-"] # liste des noms possibles pour le temoin eau
+#control_names = ["BLANC_PCR","BLANC PCR","BLANC_","BLANC ","BLANC"]
+control_names = ["Blanc_eau_pcr","Blanc_","Blanc ","Blanc"]
+for sample_name in sample2barcode.keys():
+	for control_name in control_names:
+		if control_name in sample_name:
+                        print "sample: "+sample_name+ " barcode: "+sample2barcode[sample_name]+" type: "+barcode2type[sample2barcode[sample_name]]+" description: " +barcode2description[sample2barcode[sample_name]]+"\n"
+                        if barcode2type[sample2barcode[sample_name]]=='DNA':
+                                print "OK add sample to check\n"
+                                sample2check.append(sample_name)
+                                break
+
+if sample2check:
+	pluginName = "Check_contamination"
+	for s in sample2check: # si copucage, plusieurs lancement de check-conta
+		pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"sample" : "%s" % s, "read_len" : 100, "barcode" : "%s" % sample2barcode[s]}}
+		print "-> Launching Check_contamination..."
+		resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+		print resp
+		print content
+else:
+	print "Negative control sample not found, skip Check_contamination"
+
+
+##############################
+### PlasmaMutationDetector ###
+##############################
+
+ColonLungADNctSample = 0
+OncomineFocusADNctSample = 0
+#check if ColonLungADNct sample in chip
+for barcode in barcode2target.keys():
+        if barcode2description[barcode]=='ADNct' or barcode2description[barcode]=='ADNtc':
+                if barcode2target[barcode] == '/results/uploads/BED/5/hg19/unmerged/detail/ColonLungV2.20140523.designed.with_NM.bed': # test for ColonLungADNct samples to launch PlasmaMutationDetector plugin
+                        ColonLungADNctSample = ColonLungADNctSample + 1
+                elif barcode2target[barcode] == '/results/uploads/BED/7/hg19/unmerged/detail/Oncomine_Focus.20150316.designed.plusPurpose.bed':
+                        OncomineFocusADNctSample = OncomineFocusADNctSample + 1
+
+print "NB SAMPLE CIRCULANT CLv2: "+ str(ColonLungADNctSample)+"\n"
+print "NB SAMPLE CIRCULANT OncomineFocus: "+ str(OncomineFocusADNctSample)+"\n" 
+
+if ColonLungADNctSample > 0:
+        pluginName = "BackupCopy" # BAM needed to launch PlasmaMutationDetector analysis on IB58B
+        pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"covCreate": "off","tsvCreate": "off","logCreate": "off","pdfCreate": "off","cheCreate": "off","sffCreate": "off","comCreate": "off","bamCreate": "on","finCreate": "off","delimiter_select": "_","plotCreate": "off","homoCreate": "off","vcCreate": "off","fastqCreate": "off","select_dialog": ["TSP_SAMPLE","OPT_BARCODE"]}}
+        print "-> Launching BackupCopy FOR BAM ONLY..."
+        resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+        print resp
+        print content
+
+        bcCompleted = False
+        while not bcCompleted:
+                time.sleep(20)
+                bcCompleted = checkPluginCompletion("BackupCopy", hostname, str(pk))
+
+
+        pluginName = "PlasmaMutationDetector"
+        pluginUpdate  = {"plugin": [pluginName]}
+        print "-> Launching PlasmaMutationDetector..."
+        resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+        print resp
+        print content
+
+if OncomineFocusADNctSample > 0:
+        pluginName = "BackupCopy" # BAM needed to launch PlasmaMutationDetector analysis on IB58B
+        pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"covCreate": "off","tsvCreate": "off","logCreate": "off","pdfCreate": "off","cheCreate": "off","sffCreate": "off","comCreate": "off","bamCreate": "on","finCreate": "off",
+"delimiter_select": "_","plotCreate": "off","homoCreate": "off","vcCreate": "off","fastqCreate": "off","select_dialog": ["TSP_SAMPLE","OPT_BARCODE"]}}
+        print "-> Launching BackupCopy FOR BAM ONLY..."
+        resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+        print resp
+        print content
+
+        bcCompleted = False
+        while not bcCompleted:
+                time.sleep(20)
+                bcCompleted = checkPluginCompletion("BackupCopy", hostname, str(pk))
+
+
+        pluginName = "BPER_oncomine"
+        pluginUpdate  = {"plugin": [pluginName]}
+        print "-> Launching BPER_oncomine..."
+        resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+        print resp
+        print content
+
+
+###############
+### BacupIR ###
+###############
+#TODO ?
+
+###############
+### Scripts ###
+###############
+
+vaCompleted = False
+while not vaCompleted:
+	time.sleep(20)
+	vaCompleted = checkPluginCompletion("variantAnnotation", hostname, str(pk))
+        print "VA NOT completed..."
+print "VA COMPLETED !"
+
+#done by variantAnnotation plugin
+# ColonLung : auto-filling xls with control TruQ-DNA3 detected freq.
+#if targetSBT in barcode2target.values():
+#        cmd = Popen(["python","/results/scripts/HD802-HD748_check.py",json_dat['runinfo']['alignment_dir'],str(pk)], stdout=PIPE)
+#        out, err = cmd.communicate()
+#        print '\n--HD802-HD748_check.py %s %s : \nOUT: %s\nERR: %s'%(json_dat['runinfo']['alignment_dir'], str(pk), out, err)
+
+# BRCA : auto-filling xls with control HD802-748 detected freq.
+#if targetSBT in barcode2target.values():
+#        cmd = Popen(["python","/results/scripts/HD802-HD748_check.py",json_dat['runinfo']['alignment_dir'],str(pk)], stdout=PIPE)
+#        out, err = cmd.communicate()
+#        print '\n--HD802-HD748_check.py %s %s : \nOUT: %s\nERR: %s'%(json_dat['runinfo']['alignment_dir'], str(pk), out, err)
+		
+# SBT : auto-filling xls with control HD802-748 detected freq.
+#if targetSBT in barcode2target.values():
+#	cmd = Popen(["python","/results/scripts/HD802-HD748_check.py",json_dat['runinfo']['alignment_dir'],str(pk)], stdout=PIPE)
+#	out, err = cmd.communicate()
+#	print '\n--HD802-HD748_check.py %s %s : \nOUT: %s\nERR: %s'%(json_dat['runinfo']['alignment_dir'], str(pk), out, err)	
+		
+# checking missing variants from variantcaller to variantannotation
+#cmd = Popen(["python","/results/scripts/check_variants_annotation.py",json_dat['runinfo']['alignment_dir'],str(pk)], stdout=PIPE)
+#out, err = cmd.communicate()
+#print '\n--check_variants_annotation.py %s %s : \nOUT: %s\nERR: %s'%(json_dat['runinfo']['alignment_dir'], str(pk), out, err)
+
+# script collect MET variants intron 13-14	
+#if targetSBT in barcode2target.values():
+#	cmd = Popen(["python","/results/scripts/collect_variants_MET_intron_13-14.py",str(pk)], stdout=PIPE)
+#	out, err = cmd.communicate()
+#	print '\n--collect_variants_MET_intron_13-14.py %s : \nOUT: %s\nERR: %s'%(str(pk), out, err)
+
+###################
+### FinalReport ###
+###################
+
+pluginName = "FinalReport"
+pluginUpdate  = {"plugin": [pluginName]}
+print "-> Launching FinalReport..."
+resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+print resp
+print content
+
+##################
+### BackupCopy ###
+##################
+
+pluginName = "BackupCopy"
+allCompleted = False
+
+while not (allCompleted):
+	time.sleep(20)
+	try:
+		api_url = hostname + '/v1/pluginresult/?format=json&result=%s' % str(pk)
+		f = urllib2.urlopen(api_url)
+		d = json.loads(f.read())
+		allCompleted = True
+		# Verification que tous les plugins soient termines avant de lancer BackupCopy (a l'exception de Routine lui-meme)
+		for plugin in d['objects']:
+			if plugin['pluginName'] == "Routine":
+				continue
+			elif plugin['state'] == 'Queued' or plugin['state'] == 'Started':
+				allCompleted = False
+				break
+	except:
+		print 'ERROR!  Failed to get plugins State'
+print "--> Remaining plugins Completed."
+
+#if targetSBT in barcode2target.values():
+#	pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"covCreate": "on","tsvCreate": "on","logCreate": "on","pdfCreate": "on","cheCreate": "on","sffCreate": "off","comCreate": "on","bamCreate": "off","finCreate": "on","delimiter_select": "_","plotCreate": "on","dupGCreate": "on","vcCreate": "on","fastqCreate": "on","select_dialog": ["TSP_SAMPLE","OPT_BARCODE"]}}		
+#else:
+pluginUpdate  = {"plugin": [pluginName], "pluginconfig" : {"covCreate": "on","tsvCreate": "on","logCreate": "on","pdfCreate": "on","cheCreate": "on","sffCreate": "off","comCreate": "on","bamCreate": "on","finCreate": "on","delimiter_select": "_","plotCreate": "on","homoCreate": "on","vcCreate": "on","fastqCreate": "on","select_dialog": ["TSP_SAMPLE","OPT_BARCODE"]}}
+print "-> Launching BackupCopy..."
+resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+print resp
+print content
+
+###################
+### VariantBase ###
+###################
+
+#		if runType == "LAM" or runType == "TP53-Hemato":
+#			pluginName = "VariantBase"
+#			pluginUpdate  = {"plugin": [pluginName]}
+#			print "-> Launching VariantBase..."
+#			resp, content = h.request(url, "POST", body=json.dumps(pluginUpdate),headers=headers )
+#			print resp
+#			print content
+
+end_time = datetime.datetime.now()
+print "End time = " + str(end_time)
+print "Elapsed time = " + str(end_time-start_time)
+
+#except Exception as e:
+#	print str(e)
+#	print 'Error trying to read startplugin.json, script ending now.'
+#	raise SystemExit
+

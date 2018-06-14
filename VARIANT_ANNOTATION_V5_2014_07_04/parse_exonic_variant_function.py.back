@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+
+import sys
+import csv
+import os
+
+filename = sys.argv[1]
+pwd = sys.argv[2]
+print "PYTHON SCRIPT"
+print os.getcwd()
+print "OUTPUT"
+print pwd+'/Exonic_variant_function_temp.txt'
+output = open(pwd+'/Exonic_variant_function_temp.txt',"w")
+exonic_variant_function = open(pwd+'/'+filename,"r")
+print "FILENAME INPUT"
+print filename
+
+
+reader = csv.reader(exonic_variant_function,delimiter="\t")
+writer = csv.writer(output,delimiter="\t")
+
+print "AVANTLE FOR"
+for row in reader:
+	print "DANS LE FOR"
+	print row
+	protcons = row[1]
+	if " " in protcons:
+		s = protcons.split(" ")
+		protcons1 = s[0]
+		protcons2 = ""
+		for word in s[1:]:
+			protcons2 = protcons2 + word
+	else:
+		protcons1 = protcons
+		protcons2 = "-"
+	line = [row[3]+":"+row[4]+":"+row[5]+":"+row[6]+":"+row[7],protcons1,protcons2,row[2]]
+	print "RESULT LINE"
+	print line
+	writer.writerow(line)
+
+exonic_variant_function.close()
+output.close()
+
+sys.exit()

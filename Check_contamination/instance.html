@@ -1,0 +1,178 @@
+<!DOCTYPE html> 
+<html>
+<head>
+	<!--java script for interacting with the RESTful API-->
+	<script type="text/javascript" src="/site_media/jquery/js/jquery-1.6.1.min.js"></script>
+	
+	<!--page style-->
+	<style type="text/css">
+	#formwrap {
+		line-height: 2em;
+		background: #eef;
+		margin: 10px;
+		padding: 10px;
+	}
+
+	body {
+		font-family: "Lucida Grande", "Lucida Sans Unicode", Verdana, Arial, Helvetica, sans-serif;
+		font-size: 14px;
+	}
+	</style>
+
+</head>
+<body>
+
+	<!-- CSS Code -->
+	<style type="text/css" scoped>
+		table.GeneratedTable {
+		width:70%;
+		background-color:#FFFFFF;
+		border-width:0px;
+		border-color:#336600;
+		border-style:solid;
+		color:#000000;
+		}
+
+		table.GeneratedTable td, table.GeneratedTable th {
+		border-width:0px;
+		border-color:#336600;
+		border-style:solid;
+		padding:10px;
+		}
+
+		table.GeneratedTable thead {
+		background-color:#CEE3F6;
+		}
+	</style>
+
+
+	<div id="formwrap">
+		<form>
+			<h1>Check sample contamination</h1>
+		</form>
+		Select the control sample to check :  <select name="select_sample" id="select_sample""></select>
+		<br>
+		Only keep reads over <input type="number" name="read_len" id="read_len" value=100> nucleotides.
+		<input id="postbutton" type="submit" value="Submit">
+		<br>
+	</div>
+</body>
+
+	<script type='text/javascript'>
+		var eas_url = "";
+
+		//var targetbed = "";
+		var samples = {};
+
+		var select_sample = document.getElementById("select_sample");
+		//var read_num = document.getElementById("read_num");
+		var read_len = document.getElementById("read_len");
+		
+		var TN = false
+
+		
+		//grab the global parameter value for input_text via the RESTful API
+		pluginGET = "";
+		
+		$(document).ready(function(){
+			//get variantCallers of the run
+			$.ajax({
+				url:'/rundb/api/v1/results/' + TB_result,
+				//url:'/rundb/api/v1/pluginresult/?format=json&plugin__name=variantCaller&result=' + TB_result,
+				dataType:"json",
+				type: "GET",
+				async: false,
+				success:function(data){
+					//get the plugin data
+					pluginGET = data;
+					//delete the resource_uri
+					delete pluginGET.resource_uri;
+					eas_url = pluginGET["eas"];
+					}
+				});
+			$.ajax({
+				url: eas_url,
+				dataType:"json",
+				type: "GET",
+				async: false,
+				success:function(data){
+					//get the plugin data
+					pluginGET = data;
+					//delete the resource_uri
+					delete pluginGET.resource_uri;
+					//targetbed = pluginGET['targetRegionBedFile'];
+					//console.log(targetbed);
+					samples = pluginGET['barcodedSamples'];
+					for(var sample in samples) {
+						var opt1 = document.createElement('option');
+	    					opt1.innerHTML = sample;
+	    					//opt1.value = samples[sample]['barcodes'][0];
+	    					select_sample.appendChild(opt1);
+
+					}
+				}
+			});
+			for (i = 0; i < select_sample.length; ++i){
+    				if (select_sample.options[i].value == "TN"){
+    					TN = true;
+      					select_sample.value = select_sample.options[i].value;
+      					break;
+    				}
+			}
+			if (TN == false){
+				 for (i = 0; i < select_sample.length; ++i){
+    					if (select_sample.options[i].value == "H2O-" ||select_sample.options[i].value == "H2O" || select_sample.options[i].value == "Temoin Neg" || select_sample.options[i].value == "EAU" || select_sample.options[i].value == "H2O-H2O"){
+      						select_sample.value = select_sample.options[i].value;
+      						break;
+    					}
+				}
+			}
+		});
+
+       		//process form to grab html objects and turn them into json objects 
+       		$.fn.serializeObject = function(){
+        		var o = {};
+        		var a = this.serializeArray();
+        		$.each(a, function() {
+         			if (o[this.name] != null) {
+          				if (!o[this.name].push) {
+           					o[this.name] = [o[this.name]];
+          				}
+          				o[this.name].push(this.value || '');
+         			} else {
+          				o[this.name] = this.value || '';
+         			}
+        		});
+       			return o;
+      		};
+
+		//use the RESTful API to post the json variable
+                $(function() {
+                $('#postbutton').click(function() {
+                        obj = {};
+                        //obj["targetbed"] = targetbed;
+                        obj["sample"] = select_sample.value;
+                        obj["barcode"] = samples[select_sample.value]['barcodes'][0];
+                        //obj["read_num"] = read_num.value;
+                        obj["read_len"] = read_len.value;
+
+                        pluginAPIJSON = { "plugin" : [TB_plugin.fields.name], "pluginconfig" : obj };
+                        pluginAPIJSON = JSON.stringify(pluginAPIJSON);
+                        pluginURL = "/rundb/api/v1/results/" + TB_result + "/plugin/";
+                        
+                        $.ajax({
+                                type: 'POST',
+                                url: pluginURL,
+                                contentType: "application/json; charset=utf-8",
+                                success: function(data) {
+                                        $("#json_result").html('<div style="text-align:center;"><img src="/site_media/jquery/colorbox/images/loading.gif" alt="Running Plugin" style="float:center"></img><p>Running the Plugin...</p></div>');
+                                        setTimeout("parent.$.fn.colorbox.close()" ,2000);},
+                                        data: pluginAPIJSON,
+                                dataType: "json"
+                        });
+                });
+                })
+
+	</script>
+
+</html>

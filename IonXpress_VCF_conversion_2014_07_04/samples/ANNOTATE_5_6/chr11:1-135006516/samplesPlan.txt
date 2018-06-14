@@ -1,0 +1,1 @@
+/home/carlucchesi/BRIO/tools/IonXpress_VCF_conversion_2014_07_04/samples/IonXpress005/BCF/IonXpress005_chr11_mpileup.bcf:/home/carlucchesi/BRIO/tools/IonXpress_VCF_conversion_2014_07_04/samples/IonXpress006/BCF/IonXpress006_chr11_mpileup.bcf

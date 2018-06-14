@@ -1,0 +1,57 @@
+NOTICE: Finished reading 122 lines from VCF file
+NOTICE: A total of 7 locus in VCF file passed QC threshold, representing 7 SNPs (6 transitions and 1 transversions) and 0 indels/substitutions
+NOTICE: Finished writting 7 SNPs (6 transitions and 1 transversions) and 0 indels/substitutions for 1 sample
+NOTICE: Finished reading 120 lines from VCF file
+NOTICE: A total of 5 locus in VCF file passed QC threshold, representing 5 SNPs (4 transitions and 1 transversions) and 0 indels/substitutions
+NOTICE: Finished writting 5 SNPs (4 transitions and 1 transversions) and 0 indels/substitutions for 1 sample
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_ALL.sites.2012_04_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_ALL.sites.2012_04_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 2793037 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_ALL.sites.2012_04.txt...Done
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_EUR.sites.2012_04_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_EUR.sites.2012_04_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 2766067 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_EUR.sites.2012_04.txt...Done
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_AMR.sites.2012_04_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_AMR.sites.2012_04_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 2779341 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_AMR.sites.2012_04.txt...Done
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_ASN.sites.2012_04_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_ASN.sites.2012_04_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 2743052 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_ASN.sites.2012_04.txt...Done
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_AFR.sites.2012_04_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_AFR.sites.2012_04_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 2788512 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_AFR.sites.2012_04.txt...Done
+NOTICE: the --dbtype cosmic67 is assumed to be in generic ANNOVAR database format
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_cosmic67_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_cosmic67_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 231074 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_cosmic67.txt...Done
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_snp138_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_snp138_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 2858459 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_snp138.txt...Done
+NOTICE: the --dbtype clinvar_20131105 is assumed to be in generic ANNOVAR database format
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_clinvar_20131105_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_clinvar_20131105_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+WARNING: Your index file /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_clinvar_20131105.txt.idx is out of date and will not be used. ANNOVAR can still generate correct results without index file.
+WARNING: Unable to load database index successfully from file /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_clinvar_20131105.txt.idx.
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_clinvar_20131105.txt...Done
+NOTICE: Reading annotation database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_genomicSuperDups.txt ... Done with 51599 regions
+NOTICE: Finished region-based annotation on 7 genetic variants in Union_chr1:1-249250621.avinput
+NOTICE: Output files were written to Union_chr1:1-249250621.avinput.hg19_genomicSuperDups
+NOTICE: Reading annotation database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_dgvMerged.txt ... Done with 202430 regions
+NOTICE: Finished region-based annotation on 7 genetic variants in Union_chr1:1-249250621.avinput
+NOTICE: Output files were written to Union_chr1:1-249250621.avinput.hg19_dgvMerged
+NOTICE: the --dbtype ljb2_all is assumed to be in generic ANNOVAR database format
+NOTICE: Variants matching filtering criteria are written to Union_chr1:1-249250621.avinput.hg19_ljb2_all_dropped, other variants are written to Union_chr1:1-249250621.avinput.hg19_ljb2_all_filtered
+NOTICE: Processing next batch with 7 unique variants in 7 input lines
+NOTICE: Database index loaded. Total number of bins is 195428 and the number of bins to be scanned is 7
+NOTICE: Scanning filter database /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_ljb2_all.txt...Done
+NOTICE: Reading gene annotation from /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_refGene.txt ... Done with 44826 transcripts (including 8112 without coding sequence annotation) for 24050 unique genes
+NOTICE: Reading FASTA sequences from /home/carlucchesi/BRIO/annotation/Annovar_DB_2013_05_20/hg19_refGeneMrna.fa ... Done with 1 sequences
+WARNING: A total of 293 sequences will be ignored due to lack of correct ORF annotation
+NOTICE: Finished gene-based annotation on 7 genetic variants in Union_chr1:1-249250621.avinput
+NOTICE: Output files were written to Union_chr1:1-249250621.avinput.variant_function, Union_chr1:1-249250621.avinput.exonic_variant_function

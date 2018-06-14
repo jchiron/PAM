@@ -1,0 +1,291 @@
+#!/bin/bash
+
+###
+### This script CONVERTs a VCF file generated in IonXpress format TO a VCF file compatible with mpileup BCF format
+###
+
+
+# Print time
+exec_time() { ##  $1 msg 
+        echo "[$(date +'%T')] $1"
+}
+
+error_message() {    # $1 error msg $2 error code
+        echo ""
+        echo "#########################################"
+        echo "# SCRIPT to convert IonXpress VCF files #"
+        echo "#  into samtools compatible BCF files   #"
+        echo "#  and annotate variants                #"
+        echo "#########################################"
+        echo ""
+        echo "ERROR ....."
+        echo $1
+        echo ""
+        echo "Mandatory parameters:"
+        echo " -P Full path IonXpress Samples Folder (path begins with /)"
+        echo " -L Full path IonXpress Samplesplan    (path begins with /, 1st column is sample name -mandatory)"
+        echo " -S Sample ID"
+        echo " -N Sample Name"
+        echo " -A Full path Annotation Folder        (path begins with /, if it does not exist it is created"
+        echo " -B Full path to bcftools binary file  (path begins with /)"
+        echo " -U Full path UCSC reference genome    (path begins with /, file name without .fa  suffix)"
+        echo " -X Visualize results with less -S     (yes / no)"
+        echo " -C Confirm                            (yes / no)"
+		echo " -D Full path VARIANT_ANNOTATION_V5_2014_07_04 tool folder (path begins with /)"
+		echo " -I Full path IonXpress_VCF_conversion_2014_07_04 tool folder (path begins with /)"
+		echo " -T Full path chromosomes info table file (path begins with /)"
+		echo " -V Full path annovar db folder (path begins with /)"
+        echo ""
+        echo "Optional parameters:"
+        echo " -1 TorrentServer VCF code for the STRAND FORWARD REF ALLELE COUNT  in  INFO field (default: SRF)"
+        echo " -2 TorrentServer VCF code for the STRAND REVERSE REF ALLELE COUNT  in  INFO field (default: SRR)"
+        echo " -3 TorrentServer VCF code for the STRAND FORWARD ALT ALLELE COUNT  in  INFO field (default: SAF)"
+        echo " -4 TorrentServer VCF code for the STRAND REVERSE ALT ALLELE COUNT  in  INFO field (default: SAR)"
+        echo ""
+        if [ ! -z "$2" ]; then exit $2; fi
+}
+
+while getopts "P:L:S:N:A:B:U:X:C:D:I:T:V:O:1:2:3:4:" optionName; do
+case "$optionName" in
+
+P) samplesFolder="$OPTARG";;                      ## Sample Folder 
+L) samplesplan="$OPTARG";;                        ## Samplesplan
+S) sampleID="$OPTARG";;                           ## Sample id (IonXpress)
+N) sampleName="$OPTARG";;                         ## Sample Name
+A) annotationFolder="$OPTARG";;                   ## Annotation folder for the pooled set of samples in samplesplan
+B) bcfDir="$OPTARG";;                             ## bcftools bin directory
+U) UCSCgenome="$OPTARG";;                         ## UCSC reference genome (w/o .fa)
+X) X="$OPTARG";;                                  ## Confirm yes / no
+C) CONF="$OPTARG";;                               ## Confirm yes / no
+D) DNASEQ_VARIANTS="$OPTARG";;                    ## VARIANT_ANNOTATION_V5_2014_07_04 tool folder
+I) IonXpress_ANNOTATION="$OPTARG";;               ## IonXpress_VCF_conversion_2014_07_04 tool folder
+T) CHR_INFO_TABLE="$OPTARG";;                     ## UCSC chromosomes info table file
+V) ANNOVARDB="$OPTARG";;                          ## ANNOVAR db folder
+O) CHR_FOLDER="$OPTARG";;                         ## CHR folder output
+1) SRF="$OPTARG";;                                ## code for the STRAND FORWARD REF ALLELE COUNT      INFO field (default: SRF)
+2) SRR="$OPTARG";;                                ## code for the STRAND REVERSE REF ALLELE COUNT      INFO field (default: SRR)
+3) SAF="$OPTARG";;                                ## code for the STRAND FORWARD ALT ALLELE COUNT      INFO field (default: SAF)
+4) SAR="$OPTARG";;                                ## code for the STRAND REVERSE ALT ALLELE COUNT      INFO field (default: SAR)
+
+esac
+done
+
+#echo "Annovar DB: ${ANNOVARDB}" # debug line
+#################  SAMPLE FOLDER ################
+if [ -z ${samplesFolder} ]; then
+        error_message "Missing full path Samples Folder where IonXpress samples are stored (-P)"  102
+fi
+TEST_ABSOLUTE_PATH=`echo ${samplesFolder} | awk '{if ($0 ~ "^/") {print "TRUE"} else {print "FALSE"}}'`
+if [ "${TEST_ABSOLUTE_PATH}" == "FALSE" ]; then
+ error_message "\nPath of Samples Folder (${samplesFolder}) is not an absolute path!" 102
+fi
+if [ ! -e "${samplesFolder}" ]; then
+        error_message "Samples Folder  ${samplesFolder} does nor exist!" 102
+fi
+
+#################  SAMPLESPLAN ################
+if [ -z ${samplesplan} ]; then
+        error_message "Missing full path Samplesplan file (-L)"  101
+fi
+TEST_ABSOLUTE_PATH=`echo ${samplesplan} | awk '{if ($0 ~ "^/") {print "TRUE"} else {print "FALSE"}}'`
+if [ "${TEST_ABSOLUTE_PATH}" == "FALSE" ]; then
+ error_message "\nPath of Samplesplan file (${samplesplan}) is not an absolute path!" 101
+fi
+if [ ! -e "${samplesplan}" ]; then
+        error_message "Samplesplan file ${samplesplan} does nor exist!" 101
+fi
+
+#################  ANNOTATION FOLDER ################
+if [ -z ${annotationFolder} ]; then
+        error_message "Missing full path Annotation Folder where Variant annotations are stored (-A)"  100
+fi
+TEST_ABSOLUTE_PATH=`echo ${annotationFolder} | awk '{if ($0 ~ "^/") {print "TRUE"} else {print "FALSE"}}'`
+if [ "${TEST_ABSOLUTE_PATH}" == "FALSE" ]; then
+ error_message "\nPath of Annotation Folder (${annotationFolder}) is not an absolute path!" 100
+fi
+if [ ! -e "${annotationFolder}" ]; then
+        mkdir -p ${annotationFolder}
+fi
+
+#################  ANNOTATION FOLDER ################
+if [ -z ${CHR_FOLDER} ]; then
+        error_message "Missing full path (chr output folder) (-O)"  100
+fi
+TEST_ABSOLUTE_PATH=`echo ${CHR_FOLDER} | awk '{if ($0 ~ "^/") {print "TRUE"} else {print "FALSE"}}'`
+if [ "${TEST_ABSOLUTE_PATH}" == "FALSE" ]; then
+ error_message "\nPath of Chr Folder (${CHR_FOLDER}) is not an absolute path!" 100
+fi
+if [ ! -e "${CHR_FOLDER}" ]; then
+        mkdir -p ${CHR_FOLDER}
+fi
+
+#echo ${UCSCgenome}
+###########   UCSC genome #############
+if [ -z "${UCSCgenome}" ]; then
+        error_message "Missing UCSC genome (-U)"  97
+fi
+TEST_ABSOLUTE_PATH=`echo ${UCSCgenome} | awk '{if ($0 ~ "^/") {print "TRUE"} else {print "FALSE"}}'`
+if [ "${TEST_ABSOLUTE_PATH}" == "FALSE" ]; then
+ error_message "\nUCSC path (${UCSCgenome}) is not an absolute path!" 97
+fi
+if [ ! -e "${UCSCgenome}.fa" ]; then
+        error_message "File UCSC genome ${UCSCgenome} does nor exist!" 97
+fi
+
+############   CONFIRMATION to LAUNCH
+if [[ "${CONF}" != "yes" ]] && [[ "${CONF}" != "no" ]]; then
+ error_message "Confirmation (-C) not provided or wrong (${CONF})!" 96
+fi
+
+
+##  optional read depth fields
+if [ -z "$SRF" ]; then SRF="SRF"; echo "WARNING! STRAND FORWARD REF ALLELE COUNT = $SRF"; fi    ## STRAND FORWARD REF ALLELE COUNT
+if [ -z "$SRR" ]; then SRR="SRR"; echo "WARNING! STRAND REVERSE REF ALLELE COUNT = $SRR"; fi    ## STRAND REVERSE REF ALLELE COUNT
+if [ -z "$SAF" ]; then SAF="SAF"; echo "WARNING! STRAND FORWARD ALT ALLELE COUNT = $SAF"; fi    ## STRAND FORWARD ALT ALLELE COUNT
+if [ -z "$SAR" ]; then SAR="SAR"; echo "WARNING! STRAND REVERSE ALT ALLELE COUNT = $SAR"; fi    ## STRAND REVERSE ALT ALLELE COUNT
+
+
+chromFile="${UCSCgenome}_Chromosomes.txt"
+#echo ${chromFile}
+if [ ! -e "${chromFile}" ]; then
+        error_message "UCSC genome chromosome index file ${chromFile} does not exist!" 95
+fi
+
+NSEC=20                  # number of seconds to wait for chr by chr annotation completion
+
+if [ "$CONF" == "yes" ]; then
+
+exec_time "---> Launch convert IonXpress VCF file."
+awk 'NR>1 {print}' ${samplesplan} | while read REC; do
+  exec_time "Line read is $REC"
+  sample=`echo $REC | cut -f1`
+  exec_time "Processing sample ${sample} ..."
+  #if [ "${sample}" =~ ^# ]; then
+  if [ "${sample}" == \#* ]; then
+    exec_time "Skip sample ----------------------> ${sample}"
+  else
+    #create BCf folder where results bcf files will be written for the sample
+    #bcf_sample_dir = ${annotationFolder} +'/'+ ${sample} +'/BCF'
+    #echo "BCF DIR ${bcf_sample_dir}"
+    
+    #VCF_INPUT=${samplesFolder}/${sample}/${sample}
+    VCF_INPUT=${samplesFolder}/${sample}/TSVC_variants
+    #BCF_FOLDER=${samplesFolder}/${sample}/BCF
+    BCF_FOLDER=${annotationFolder}/${sample}/BCF
+    mkdir -p $BCF_FOLDER
+    BCF_FILES=${BCF_FOLDER}/${sample}
+    bash ${IonXpress_ANNOTATION}/convert_TorSer_VCF_generate_BCF.sh -i ${VCF_INPUT} -o ${BCF_FILES} -U ${UCSCgenome} -C yes -1 $SRF -2 $SRR -3 $SAF -4 $SAR || (exec_time "Error in VCF conversion!"; exit 94) 
+    if [ "$?" != "0" ]; then
+      exec_time "\nError in VCF conversion!\n" 
+      exit 94
+    fi 
+  fi
+done || exit 200
+
+exec_time "---> Launch Chr by Chr annotation."
+#bash ${DNASEQ_VARIANTS}/VarPipe_process_batch_samples.V2.sh -S ${samplesplan} -I ${samplesFolder} -O ${annotationFolder} -B BCF -D 999999999 -V 0.1.19 -C yes
+bash ${DNASEQ_VARIANTS}/VarPipe_process_batch_samples.V2.sh -S ${samplesplan} -N ${sampleID} -I ${annotationFolder} -O ${CHR_FOLDER} -F ${bcfDir} -B BCF -D 999999999 -V 0.1.19 -C yes -T ${CHR_INFO_TABLE} -P ${DNASEQ_VARIANTS} -A ${ANNOVARDB}
+if [ "$?" != "0" ]; then
+  exec_time "\nError in Chr by Chr annotation!\n"
+  exit 93
+fi
+#exit 0
+
+exec_time "---> Check all chr annotation finished."
+ALL_FINISHED="no"
+while [ "${ALL_FINISHED}" == "no" ]; do
+bash ${DNASEQ_VARIANTS}/check_variant_annotation_queue.sh -V ${annotationFolder}/${sampleID}/CHR -N ${sampleID}
+  if [ "$?" == "0" ]; then 
+    ALL_FINISHED="yes"
+  # else
+    # # exec_time "Waiting all job finished ($NSEC seconds) ..." && sleep ${NSEC}
+    # sleep ${NSEC}
+  fi
+done
+
+exec_time "---> Launch merge chromosome annotation in a single file."
+bash ${DNASEQ_VARIANTS}/MergeVar_all_CHRs.V2.sh -V ${annotationFolder}/${sampleID}/CHR -A yes -S no -Z no -C yes
+
+htmlTopBlock=${annotationFolder}/variantAnnotation_block.html
+
+allTsvLinks=''
+if [ "$?" != "0" ]; then
+  exec_time "\nError in Merging cht Annotations!\n"
+  exit 92
+else #added to generate html block to download annotated variants files
+    #python format_annotation_tsv.py -a ${annotationFolder} -s ${smapleName} #in case we want to use render method
+
+    #rename file
+    tsvFile=${annotationFolder}/${sampleID}/CHR/${sampleID}_annot.tsv
+    # bedFile="/results/uploads/BED/13/hg19/unmerged/detail/IAD43772_Designed_v2.bed"
+    tsvLink=${TSP_URLPATH_PLUGIN_DIR}/${sampleID}/CHR/${sampleID}_annot.tsv
+    tsvLink_safir02=${TSP_URLPATH_PLUGIN_DIR}/${sampleID}/CHR/${sampleName}_NGS_VC_TS.tsv
+    #tsvLink="/output/Home/Auto_user_PGM-41-colun_lung_plus_80_076/plugin_out/variantAnnotation_out.190"/${sampleID}/CHR/${sampleID}_annot.tsv
+    cp ${annotationFolder}/${sampleID}/CHR/Union_samples_chrAll.txt ${tsvFile} 
+
+    # safir02 formating routine
+    exec_time "---> Formating tsv file for Safir02 use"
+    # ${DIRNAME}/scripts/format_safir02.py --tsv-file ${tsvFile} --bed-file ${bedFile}
+    ${DIRNAME}/scripts/format_safir02.py --tsv-file ${tsvFile} --sample-id ${sampleID} --sample-name "${sampleName}" --plugin-path ${TSP_FILEPATH_PLUGIN_DIR}
+
+    allTsvLinks="${allTsvLinks} ${sampleID}:${tsvLink}"
+
+    htmlBlock=${annotationFolder}/${sampleID}/variantAnnotation_block.html
+
+    echo "<!DOCTYPE html>" > ${htmlBlock}
+    echo "<html lang=\"en\">" >>${htmlBlock}
+    echo "<head>" >> ${htmlBlock}
+    echo "<base target=\"_parent\"/>" >> ${htmlBlock} 
+
+    echo "<link rel=\"stylesheet\" media=\"all\" href=\"/site_media/resources/bootstrap/css/bootstrap.min.css\">" >> ${htmlBlock} 
+    echo "<link href=\"/site_media/resources/kendo/styles/kendo.common.min.css\" rel=\"stylesheet\">" >> ${htmlBlock} 
+    echo "<link href=\"/site_media/resources/less/kendo.tb.min.css\" rel=\"stylesheet\">" >> ${htmlBlock} 
+    echo "<link type=\"text/css\" rel=\"stylesheet\" href=\"/site_media/resources/styles/tb-styles.min.css\">" >> ${htmlBlock} 
+
+    echo "<\/head>" >> ${htmlBlock} 
+
+    echo "<div class=\"k-widget k-grid\">" >> ${htmlBlock}  
+    echo "<table>" >> ${htmlBlock} 
+    echo "    <thead class=\"k-grid-header\">" >> ${htmlBlock} 
+    echo "      <tr>" >> ${htmlBlock} 
+    echo "        <th class=\"k-header\"><span class=\"help\" title=\"Sample name\">Sample IonXpress ID</span></th>" >> ${htmlBlock} 
+    echo "        <th class=\"k-header\"><span class=\"help\" title=\"Download Link\">Download link</span></th>" >> ${htmlBlock} 
+    echo "      </tr></thead>" >> ${htmlBlock}
+
+    echo "<tbody>" >> ${htmlBlock}
+    echo "      <tr>" >> ${htmlBlock}
+    echo "        <td>${sampleID}</td>" >> ${htmlBlock}
+    echo "        <td><a class=\"btn\" href=\"${tsvLink}\">TSV</a></td>" >> ${htmlBlock}
+    echo "      </tr>" >> ${htmlBlock}
+    echo "    </tbody>" >> ${htmlBlock}
+    echo "</table>" >> ${htmlBlock}
+    echo "</div>" >> ${htmlBlock}
+
+    echo "</body>" >> ${htmlBlock}
+    echo "</html>" >> ${htmlBlock}
+
+    #remove samplePlan file
+    rm ${annotationFolder}/${sampleID}.txt
+
+	# write in the topBlock (the one displayed in the TS interface)
+    echo "      <tr>" >> ${htmlTopBlock}
+    echo "        <td>${sampleID}</td>" >> ${htmlTopBlock}
+    echo "        <td>${sampleName}</td>" >> ${htmlTopBlock}
+    echo "        <td><a class=\"btn\" href=\"${tsvLink}\">TSV</a></td>" >> ${htmlTopBlock}
+    echo "        <td><a class=\"btn\" href=\"${tsvLink_safir02}\">TSV_safir02</a></td>" >> ${htmlTopBlock}
+    echo "      </tr>" >> ${htmlTopBlock}
+fi
+    
+exec_time "---> Done."
+if [ "${X}" == "yes" ]; then
+ less -S ${annotationFolder}/${sampleID}/CHR/Union_samples*.txt
+fi
+
+else
+ error_message "Confirmation was ${CONF} - process not launched!" 94
+fi
+
+exec_time "End." && exit 0
+
+
+

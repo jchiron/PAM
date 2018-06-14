@@ -1,0 +1,187 @@
+#!/usr/bin/env python
+# part of this code is from FileExporter plugin
+import json
+import os
+import sys
+import glob
+from ion.plugin import *
+from subprocess import *
+from django.utils.datastructures import SortedDict
+import urllib2
+import requests
+
+class BackupIR(IonPlugin):
+	""" Plugin object which copy all desired IonReporter results file from the run into a folder."""
+	""" A hierarchical filesystem is created (project->run->patients) to store the data, and files name are uniformly renamed"""
+	version = "0.1"
+	
+	envDict = dict(os.environ)
+	json_dat = {}
+	renameString = ""
+	barcodeNames = []
+	sampleNameLookup = {} # dictionary allowing us to get the sample name associated with a particular barcode name
+	isBarcodedRun = False
+	runName = 'unknown'
+	project = 'unknown'
+	runPath = ''
+        folder = '/media/PGM/results/IonRerporter'
+	
+	# paths to the most recent, completed instance of the IonReporter uploader plugin
+	#IRuploaderPath = False
+        	
+	def getBarcodeNameFromFileName(self, fileName):
+		for testBarcode in self.barcodeNames:
+			testBarcode2 = testBarcode + '_'
+			if testBarcode2 in fileName:
+				barcodeName = testBarcode
+		return barcodeName
+		
+	def createOneFolderByPatient(self, bamFileList):
+		for fileName in bamFileList:
+			fileName = fileName.replace('./', '')
+			barcodeName = self.getBarcodeNameFromFileName(fileName)
+			patientName = self.sampleNameLookup[barcodeName]
+                        if patientName not re.match("_RNA_"): # 1 result per patient (DNA +RNA) under same folder named as DNA sample
+                            print 'CREATING FOLDER : %s -'%(patientName)
+                            cmd = 'mkdir '+ self.folder + '/' + self.runPath + '/' + patientName
+                            #os.system(cmd)
+                            print 'cmd %s' % cmd
+
+                            cmd = Popen('mkdir', self.folder+'/'+self.runPath+'/'+patientName, stdout=PIPE)
+                            #cmd = Popen(['%s/backup_pgm.sh' % (self.envDict['DIRNAME']), 'mkdir', self.runPath + '/' + patientName], stdout=PIPE)
+                            out, err = cmd.communicate()
+                            print 'OUT: %s\nERR: %s'%(out, err)
+
+                            #get unfiltered zip, current tsv files paths and dowload them
+                            self.getSampleJson(patientName)
+			
+        def getSampleJson(self, sampleName):
+            jsonFile = '%s/%s/%s/%s.json' % (self.folder,self.runPath, sampleName, sampleName)
+            print 'Destination json file : %s' % jsonFile
+
+            cmd = 'curl -k -H "Authorization:YzdkYzM5MmFlZTg4NDJhMzBkODQ3ZWIwMzgyZmJkMmI0NzVhZDNmZjQzMTkzYjY1NDYyMDg5MzAwMGRiNGRkZg" "https://129.21.10.4/webservices_42/rest/api/analysis?format=json&name=%s &type=sample" > %s '%(sampleName,jsonFile)
+            print 'Get IR json for sample %s ' % sampleName
+            print 'cmd %s' % cmd
+            #os.system(cmd)
+
+
+	def getPluginPath(self, pluginName):
+		pluginPath = False
+		try:
+			api_url = self.json_dat['runinfo']['api_url'] + '/v1/pluginresult/?format=json&plugin__name=%s&result=%s' % (pluginName,str(self.json_dat['runinfo']['pk']))
+			api_key = self.json_dat['runinfo'].get('api_key', None)
+			if api_key is not None:
+				api_url = api_url + '&api_key=%s' % api_key
+				print 'Using API key: %s' % api_key
+			else:
+				print 'No API key available'
+			f = urllib2.urlopen(api_url)
+			d = json.loads(f.read())
+			
+			for plugin in d['objects']: # they are already sorted from newest to oldest, so take the first of this list which is 'completed'
+				if plugin['state'] == 'Completed':
+					pluginPath = plugin['path']
+					pluginPath = pluginPath.split('/')[-1]
+					break
+			if not pluginPath:
+				print 'WARNING! No completed instance found for plugin "%s"' % pluginName
+		except:
+			print 'ERROR!  Failed to get variant caller path'
+		
+		print 'INFO: using %s path: %s' % (pluginName,pluginPath)
+		return pluginPath
+		
+       
+	def launch(self):
+		try:
+			with open('startplugin.json', 'r') as fh:
+				self.json_dat = json.load(fh)
+		except:
+			print 'Error reading plugin json.'
+		
+		try:
+			htmlOut = open('%s/plugin_out/BackupIR_out/BackupIR_block.html'%self.envDict['ANALYSIS_DIR'], 'a+')
+		except:
+			htmlOut = open('BackupIR_block.html', 'w')
+		htmlOut.write('<html><body>\n')
+
+		if os.path.isfile(self.envDict['TSP_FILEPATH_BARCODE_TXT']):
+			self.isBarcodedRun = True
+			
+		if not self.isBarcodedRun:
+			print "This plugin only work for barcoded run. \n Exiting..."
+			sys.exit(0)
+
+                # get the project name.
+		try:
+			self.project = self.envDict['TSP_PROJECT']
+		except:
+			self.project = 'unknown'
+			
+		# get the run name.
+		try:
+			self.runName = self.envDict['TSP_ANALYSIS_NAME']
+		except:
+			self.runName = 'unknown'
+		self.runPath = self.project + '/' + self.runName
+
+                # creating folder of the project
+		print 'CREATING FOLDER : %s -'%(self.project)
+		cmd = Popen('mkdir', self.folder+'/'+self.project, stdout=PIPE)
+		out, err = cmd.communicate()
+		print 'OUT: %s\nERR: %s'%(out, err)
+
+                # creating folder of the run
+		print 'CREATING FOLDER : %s -'%(self.runName)
+		cmd = Popen('mkdir', self.folder+'/'+self.runPath, stdout=PIPE)
+		out, err = cmd.communicate()
+		print 'OUT: %s\nERR: %s'%(out, err)
+
+                #get IonReporter uploader path
+                self.IRuploaderPath = self.getPluginPath("IonReporterUploader")
+                htmlOut.write('&#8594; IonReporterUploader instance : <b>%s</b><br/>\n'%self.IonReporterUploaderPath)
+                if not self.IonReporterUploaderPath:
+                    IRuploader = False
+
+                # Get bam filenames.
+		with open(os.path.join(self.json_dat['runinfo']['basecaller_dir'], 'datasets_basecaller.json'), 'r') as f:
+			json_basecaller = json.load(f)
+		bamPaths = []
+		bams = []
+		for datum in json_basecaller['datasets']:
+			if reference_path != '':
+				tempPath = os.path.join(self.json_dat['runinfo']['alignment_dir'], datum['file_prefix']+'.bam')
+			else:
+				tempPath = os.path.join(self.json_dat['runinfo']['basecaller_dir'], datum['file_prefix']+'.basecaller.bam')
+			print 'adding BAM: %s' % tempPath
+			if os.path.exists(tempPath):
+				bamPaths.append(tempPath)
+				if datum['dataset_name'][datum['dataset_name'].rfind('/')+1:] != 'No_barcode_match' and '/' in datum['dataset_name']:
+					bams.append(datum['dataset_name'])
+
+		# get the list of 'valid' barcodes or samples (could be either depending on whether user altered names with run planning
+		# and sort of hacky, but extract this from the BAM file names we just got above
+		for bamFileName in bamPaths:
+			barcodeName = bamFileName.split('/')[-1] # get the last part, just the name with no path (probably can use os method here too)
+			barcodeName = barcodeName.split('_rawlib')[0] # get just the barcode part of the name
+			# find a possible matching sample name
+			for sampleItemName in samples:
+				sampleItem = samples[sampleItemName]
+				if barcodeName in sampleItem['barcodes']:
+					self.sampleNameLookup[barcodeName] = sampleItemName
+			if barcodeName in self.sampleNameLookup.keys():
+				sampleName = self.sampleNameLookup[barcodeName]
+			else:
+				sampleName = ''
+				self.sampleNameLookup[barcodeName] = '' # makes it much easier later to do the lookup with no conditional tests
+			# MGD note: I considered setting blank sample names to the barcode name instead, but might not be what customer intended
+			print 'BARCODE FOUND: %s SAMPLE ID: %s' % (barcodeName, sampleName)
+			self.barcodeNames.append(barcodeName)
+		self.sampleNameLookup[''] = '' # allows us to easily handle case where barcode might not have been found
+
+                # Create patients folders
+		print 'CREATING PATIENTS FOLDERS...'
+		self.createOneFolderByPatient(bamPaths)
+
+if __name__ == "__main__":
+	PluginCLI(BackupIR())
